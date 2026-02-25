@@ -1,0 +1,15 @@
+# OCRX 项目依赖
+# 使用方法：pip install -r requirements.txt
+
+# OCR 和 PDF 处理
+openai>=1.0.0
+PyMuPDF>=1.23.0
+
+# 图像处理
+Pillow>=10.0.0
+
+# 剪贴板操作
+pyperclip>=1.8.0
+
+# 打包工具（可选，仅打包时需要）
+pyinstaller>=5.0.0
