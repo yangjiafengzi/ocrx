@@ -32,15 +32,18 @@ pyinstaller ^
     --icon=assets\icon.ico ^
     --add-data="ocrx;ocrx" ^
     --add-data="assets;assets" ^
+    --additional-hooks-dir=. ^
     --hidden-import=tkinter ^
     --hidden-import=PIL ^
     --hidden-import=PIL._imaging ^
     --hidden-import=PIL._imagingtk ^
     --hidden-import=PIL._tkinter_finder ^
     --hidden-import=fitz ^
+    --hidden-import=fitz.fitz ^
     --hidden-import=PyMuPDF ^
     --collect-all=fitz ^
     --collect-all=PyMuPDF ^
+    --copy-metadata=PyMuPDF ^
     --clean ^
     --noconfirm ^
     main.py
