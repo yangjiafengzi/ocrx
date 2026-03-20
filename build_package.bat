@@ -34,8 +34,13 @@ pyinstaller ^
     --add-data="assets;assets" ^
     --hidden-import=tkinter ^
     --hidden-import=PIL ^
-    --hidden-import=fitz ^
+    --hidden-import=PIL._imaging ^
+    --hidden-import=PIL._imagingtk ^
     --hidden-import=PIL._tkinter_finder ^
+    --hidden-import=fitz ^
+    --hidden-import=PyMuPDF ^
+    --collect-all=fitz ^
+    --collect-all=PyMuPDF ^
     --clean ^
     --noconfirm ^
     main.py
