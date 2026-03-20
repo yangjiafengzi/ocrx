@@ -6,68 +6,47 @@ echo OCRX 2.1.0 Build Script
 echo ==========================================
 echo.
 
-REM 检查是否在项目根目录
+REM Check if in project root
 if not exist "main.py" (
-    echo [错误] 请在项目根目录运行此脚本！
+    echo [Error] Please run this script in project root directory!
     pause
     exit /b 1
 )
 
-REM 步骤1: 清理旧文件
-echo [1/4] 清理旧文件...
+REM Step 1: Clean
+echo [1/4] Cleaning old files...
 if exist "dist" rmdir /s /q "dist"
 if exist "build" rmdir /s /q "build"
 if exist "*.spec" del /q "*.spec"
 if exist "installer" rmdir /s /q "installer"
-echo     清理完成
+echo     Done
 
-REM 步骤2: PyInstaller 打包
+REM Step 2: PyInstaller
 echo.
-echo [2/4] PyInstaller 打包中...
-echo     这可能需要 5-10 分钟，请耐心等待...
-pyinstaller ^
-    --name="OCRX-2.1.0" ^
-    --windowed ^
-    --onefile ^
-    --icon=assets\icon.ico ^
-    --add-data="ocrx;ocrx" ^
-    --add-data="assets;assets" ^
-    --additional-hooks-dir=. ^
-    --hidden-import=tkinter ^
-    --hidden-import=PIL ^
-    --hidden-import=PIL._imaging ^
-    --hidden-import=PIL._imagingtk ^
-    --hidden-import=PIL._tkinter_finder ^
-    --hidden-import=fitz ^
-    --hidden-import=fitz.fitz ^
-    --hidden-import=PyMuPDF ^
-    --collect-all=fitz ^
-    --collect-all=PyMuPDF ^
-    --copy-metadata=PyMuPDF ^
-    --clean ^
-    --noconfirm ^
-    main.py
+echo [2/4] Building with PyInstaller...
+echo     This may take 5-10 minutes, please wait...
+pyinstaller --name="OCRX-2.1.0" --windowed --onefile --icon=assets\icon.ico --add-data="ocrx;ocrx" --add-data="assets;assets" --additional-hooks-dir=. --hidden-import=tkinter --hidden-import=PIL --hidden-import=PIL._imaging --hidden-import=PIL._imagingtk --hidden-import=PIL._tkinter_finder --hidden-import=fitz --hidden-import=fitz.fitz --hidden-import=PyMuPDF --collect-all=fitz --collect-all=PyMuPDF --copy-metadata=PyMuPDF --clean --noconfirm main.py
 
 if errorlevel 1 (
     echo.
-    echo [错误] PyInstaller 打包失败！
+    echo [Error] PyInstaller build failed!
     pause
     exit /b 1
 )
-echo     打包完成
+echo     Done
 
-REM 步骤3: 准备安装程序文件
+REM Step 3: Prepare installer files
 echo.
-echo [3/4] 准备安装程序文件...
+echo [3/4] Preparing installer files...
 mkdir installer 2>nul
 copy "dist\OCRX-2.1.0.exe" "installer\OCRX-2.1.0.exe" >nul
 copy "assets\README.txt" "installer\README.txt" >nul
-echo     准备完成
+echo     Done
 
-REM 步骤4: Inno Setup 制作安装包
+REM Step 4: Inno Setup
 echo.
-echo [4/4] 制作安装程序...
-echo     检查 Inno Setup...
+echo [4/4] Building installer...
+echo     Checking Inno Setup...
 
 set "INNO_PATH=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not exist "%INNO_PATH%" (
@@ -77,22 +56,22 @@ if not exist "%INNO_PATH%" (
 if exist "%INNO_PATH%" (
     "%INNO_PATH%" installer.iss
     if errorlevel 1 (
-        echo [警告] Inno Setup 编译失败，但单文件 exe 已生成
+        echo [Warning] Inno Setup compile failed, but single exe is ready
     ) else (
-        echo     安装程序制作完成
+        echo     Installer build complete
     )
 ) else (
-    echo [警告] 未找到 Inno Setup，跳过安装程序制作
-    echo     单文件 exe 已生成: dist\OCRX-2.1.0.exe
+    echo [Warning] Inno Setup not found, skipping installer
+    echo     Single exe ready: dist\OCRX-2.1.0.exe
 )
 
 echo.
 echo ==========================================
-echo 打包完成！
+echo Build Complete!
 echo ==========================================
 echo.
-echo 输出文件:
-echo   - 单文件版本: dist\OCRX-2.1.0.exe
-echo   - 安装程序:   installer\OCRX-2.1.0-Setup.exe (如果 Inno Setup 安装)
+echo Output files:
+echo   - Single exe: dist\OCRX-2.1.0.exe
+echo   - Installer:  installer\OCRX_2.1.0_Setup.exe (if Inno Setup installed)
 echo.
 pause
