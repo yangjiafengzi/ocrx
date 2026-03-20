@@ -3,7 +3,7 @@
 OCRX - 智能文字识别系统
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "OCRX Team"
 
 from .clipboard import ClipboardHistory
