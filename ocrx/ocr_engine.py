@@ -67,16 +67,18 @@ class OCREngine:
         prompt: str,
         identifier: Tuple[str, int],
         image_data: bytes,
-        max_retries: int = 3
+        max_retries: int = 5,
+        example_images: List[Tuple[str, bytes]] = None
     ) -> Tuple[Tuple[str, int], str]:
         """
-        处理单张图片（带重试机制）
+        处理单张图片（带重试机制，支持少样本提示）
 
         Args:
             prompt: 提示词
             identifier: (文件名，页码) 元组
             image_data: 图片字节数据
             max_retries: 最大重试次数
+            example_images: 少样本示例列表 [(示例文本, 示例图片数据), ...]
 
         Returns:
             (identifier, 识别结果) 元组
@@ -84,28 +86,64 @@ class OCREngine:
         from .retry_utils import retry_operation
         
         def do_recognition():
+            # 构建消息内容
+            content = []
+            
+            # 如果有示例，先添加示例图片和文本
+            if example_images:
+                for i, (example_text, example_image_data) in enumerate(example_images):
+                    example_base64 = self.image_to_base64(example_image_data)
+                    
+                    # 添加示例图片
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{example_base64}"
+                        }
+                    })
+                    
+                    # 添加示例文本说明
+                    content.append({
+                        "type": "text", 
+                        "text": f"示例{i+1}：这是一张示例图片，它的正确识别结果是：{example_text}"
+                    })
+            
+            # 添加目标图片
             image_base64 = self.image_to_base64(image_data)
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{image_base64}"
+                }
+            })
+            
+            # 添加提示词
+            content.append({"type": "text", "text": prompt})
             
             response = self.client.chat_completions_create(
                 model=self.model_name,
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}"
-                                }
-                            },
-                            {"type": "text", "text": prompt}
-                        ]
+                        "content": content
                     }
                 ],
                 timeout=120  # 超时时间120秒（2分钟），适合复杂图形识别
             )
             
             result = response.choices[0].message.content
+            
+            # 验证结果有效性，无效时抛出异常触发重试
+            if result is None:
+                raise ValueError("API返回None")
+            
+            result_str = str(result).strip()
+            if len(result_str) == 0:
+                raise ValueError("API返回空内容")
+            
+            if result_str.startswith("识别失败"):
+                raise ValueError(f"API返回失败内容：{result_str[:100]}")
+            
             return result
         
         def on_retry(attempt, delay, exception):

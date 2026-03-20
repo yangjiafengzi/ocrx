@@ -102,15 +102,17 @@ class CopyHandler(BaseHandler):
         self,
         file_paths: List[str],
         prompt: str,
-        page_range: str
+        page_range: str,
+        example_images: List[Tuple[str, bytes]] = None
     ) -> Tuple[bool, str]:
         """
-        处理文件（识别并复制）
+        处理文件（识别并复制），支持少样本提示
 
         Args:
             file_paths: 文件路径列表
             prompt: 提示词
             page_range: 页码范围
+            example_images: 少样本示例列表 [(文本, 图片数据), ...]
 
         Returns:
             (是否成功, 结果内容或错误信息)
@@ -122,7 +124,8 @@ class CopyHandler(BaseHandler):
             success, result = self.processing_service.process_and_copy(
                 file_paths=file_paths,
                 prompt=prompt,
-                page_range_str=page_range
+                page_range_str=page_range,
+                example_images=example_images
             )
 
             if success:

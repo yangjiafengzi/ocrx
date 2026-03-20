@@ -8,13 +8,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 from pathlib import Path
 import threading
+from typing import List, Optional
 
 from ..config import ConfigManager
 from ..logger import StructuredLogger
 from ..clipboard import ClipboardHistory
 from ..processing_service import ProcessingService
+from ..example_library import ExampleLibrary
 
 # 导入处理器
+from .example_manager_ui import ExampleManagerUI
 from .handlers import (
     SaveHandler, CopyHandler, ClipboardHandler,
     ResultHandler, PromptHandler, ProgressHandler
@@ -56,6 +59,10 @@ class MainWindow:
 
         # 提示词模板
         self.prompt_templates = self.config_manager.get_prompt_templates()
+
+        # 示例库
+        self.example_library = ExampleLibrary()
+        self.selected_example_ids: List[str] = []
 
         # 页面范围
         self.page_range_var = tk.StringVar(value="")
@@ -127,6 +134,12 @@ class MainWindow:
         config_frame = ttk.Frame(self.notebook)
         self.notebook.add(config_frame, text="主要配置")
 
+        # 示例库管理页面（少样本提示）
+        example_frame = ttk.Frame(self.notebook)
+        self.notebook.add(example_frame, text="少样本示例库")
+        self.example_manager_ui = ExampleManagerUI(example_frame, self.example_library)
+        self.example_manager_ui.set_selection_change_callback(self._on_example_selection_change)
+
         # 日志页面
         log_frame = ttk.Frame(self.notebook)
         self.notebook.add(log_frame, text="运行日志")
@@ -178,6 +191,11 @@ class MainWindow:
         file_button_frame.grid(row=row, column=2, padx=5, sticky='w')
         ttk.Button(file_button_frame, text="选择文件", command=self.select_files).pack(side=tk.LEFT, padx=2)
         ttk.Button(file_button_frame, text="清空", command=self.clear_file_paths).pack(side=tk.LEFT, padx=2)
+        
+        # 支持格式提示
+        row += 1
+        format_hint = ttk.Label(parent, text="支持格式：PDF、JPG、PNG、BMP、GIF、TIFF、WebP、HEIC、RAW(CR2/NEF/ARW/DNG)", foreground="gray", font=("微软雅黑", 8))
+        format_hint.grid(row=row, column=1, sticky="w", padx=10, pady=0)
         row += 1
 
         # 输出目录
@@ -307,6 +325,14 @@ class MainWindow:
         def update():
             self.progress_handler.update_status(status)
         self.root.after(0, update)
+    
+    def _on_example_selection_change(self, selected_ids: List[str]):
+        """示例选择变化回调"""
+        self.selected_example_ids = selected_ids.copy()
+        if len(selected_ids) > 0:
+            self.logger.info(f"示例选择变化：选中 {len(selected_ids)} 个示例", "FewShot")
+        else:
+            self.logger.debug("示例选择清空", "FewShot")
 
     def populate_fields_from_config(self):
         """将配置数据填充到 GUI 控件中"""
@@ -339,7 +365,7 @@ class MainWindow:
         """选择文件"""
         filetypes = [
             ("PDF 文件", "*.pdf"),
-            ("图片文件", "*.png *.jpg *.jpeg *.bmp"),
+            ("图片文件", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.tif *.webp *.heic *.heif *.raw *.cr2 *.nef *.arw *.dng"),
             ("所有文件", "*.*")
         ]
         files = filedialog.askopenfilenames(title="选择文件", filetypes=filetypes)
@@ -382,6 +408,37 @@ class MainWindow:
             messagebox.showerror("错误", "请填写提示词")
             return None
 
+        # 获取选中的少样本示例
+        example_images = None
+        if self.selected_example_ids:
+            # 限制示例数量
+            if len(self.selected_example_ids) > 3:
+                result = messagebox.askyesno(
+                    "提示",
+                    f"你选中了 {len(self.selected_example_ids)} 个示例，建议不超过 3 个以节省 token 和费用。\n是否继续？"
+                )
+                if not result:
+                    return None
+            
+            example_images = []
+            found_count = 0
+            for ex_id in self.selected_example_ids:
+                example = self.example_library.get_example(ex_id)
+                if example:
+                    found_count += 1
+                    # 读取示例图片数据
+                    try:
+                        with open(example.image_path, 'rb') as f:
+                            img_data = f.read()
+                        example_images.append((example.text, img_data))
+                        self.logger.debug(f"加载示例：{example.id} - {example.description}", "FewShot")
+                    except Exception as e:
+                        self.logger.error(f"读取示例失败 {ex_id}: {e}", "FewShot")
+                else:
+                    self.logger.warning(f"示例不存在：{ex_id}，跳过", "FewShot")
+            
+            self.logger.info(f"选中 {len(self.selected_example_ids)} 个，实际找到 {found_count} 个，准备了 {len(example_images)} 个少样本示例", "FewShot")
+
         page_range = self.page_range_var.get().strip()
 
         self.processing_service.update_config(
@@ -393,7 +450,7 @@ class MainWindow:
             pdf_scale=float(self.scale_combobox.get().strip())
         )
 
-        return (file_paths.split(';'), prompt, page_range)
+        return (file_paths.split(';'), prompt, page_range, example_images)
 
     def start_ocr_and_save(self):
         """识别并保存"""
@@ -405,13 +462,15 @@ class MainWindow:
         if not params:
             return
 
-        file_paths, prompt, page_range = params
+        # 使用更安全的参数解包，支持向后兼容
+        file_paths, prompt, page_range, *optional_params = params
+        example_images = optional_params[0] if optional_params else None
 
         self.is_running = True
 
         def run_save():
             try:
-                results = self.save_handler.process_files(file_paths, prompt, page_range)
+                results = self.save_handler.process_files(file_paths, prompt, page_range, example_images)
             finally:
                 self.is_running = False
                 self.current_task = None
@@ -432,7 +491,9 @@ class MainWindow:
         if not params:
             return
 
-        file_paths, prompt, page_range = params
+        # 使用更安全的参数解包，支持向后兼容
+        file_paths, prompt, page_range, *optional_params = params
+        example_images = optional_params[0] if optional_params else None
 
         passed, total_pages, msg = self.copy_handler.check_page_limit(file_paths, page_range)
         if not passed:
@@ -443,7 +504,7 @@ class MainWindow:
 
         def run_copy():
             try:
-                success, result = self.copy_handler.process_files(file_paths, prompt, page_range)
+                success, result = self.copy_handler.process_files(file_paths, prompt, page_range, example_images)
             finally:
                 self.is_running = False
                 self.current_task = None

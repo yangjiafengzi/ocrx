@@ -69,14 +69,16 @@ class ResultMerger:
             # 合并所有内容
             if valid_contents:
                 combined_content = '\n\n'.join(valid_contents)
-                
+            
                 # 添加失败注释
                 if failure_notes:
                     combined_content += "\n\n---\n\n## 识别说明\n\n"
                     combined_content += '\n'.join(failure_notes)
-                
+            
+                logger.debug(f"合并完成: valid_contents={len(valid_contents)}, failure_notes={len(failure_notes)}, combined_length={len(combined_content)}", "Merge-Debug")
                 return combined_content
             else:
+                logger.warning("没有有效的识别内容，返回'*未识别到有效内容*'", "Merge-Debug")
                 return "*未识别到有效内容*"
         
         def on_retry(attempt, delay, exception):

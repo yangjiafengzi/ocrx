@@ -15,15 +15,17 @@ class SaveHandler(BaseHandler):
         self,
         file_paths: List[str],
         prompt: str,
-        page_range: str
+        page_range: str,
+        example_images: List[Tuple[str, bytes]] = None
     ) -> Dict[str, Tuple[bool, Optional[str]]]:
         """
-        处理文件（识别并保存）
+        处理文件（识别并保存），支持少样本提示
 
         Args:
             file_paths: 文件路径列表
             prompt: 提示词
             page_range: 页码范围
+            example_images: 少样本示例列表 [(文本, 图片数据), ...]
 
         Returns:
             处理结果字典
@@ -35,7 +37,8 @@ class SaveHandler(BaseHandler):
             results = self.processing_service.process_files(
                 file_paths=file_paths,
                 prompt=prompt,
-                page_range_str=page_range
+                page_range_str=page_range,
+                example_images=example_images
             )
 
             # 处理完成
