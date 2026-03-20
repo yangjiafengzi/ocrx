@@ -10,20 +10,35 @@ from .clipboard import ClipboardHistory
 from .logger import StructuredLogger
 from .ocr_client import OCRClient
 from .config import ConfigManager
-from .pdf_processor import PDFProcessor
 from .image_processor import ImageProcessor
 from .ocr_engine import OCREngine
 from .result_merger import ResultMerger
 from .processing_service import ProcessingService
+
+# PDFProcessor 延迟导入，避免 PyMuPDF 导入问题
+PDFProcessor = None
+
+def get_pdf_processor():
+    """延迟获取 PDFProcessor，处理 PyMuPDF 导入问题"""
+    global PDFProcessor
+    if PDFProcessor is None:
+        try:
+            from .pdf_processor import PDFProcessor as PP
+            PDFProcessor = PP
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).error(f"无法导入 PDFProcessor: {e}")
+            raise
+    return PDFProcessor
 
 __all__ = [
     "ClipboardHistory",
     "StructuredLogger",
     "OCRClient",
     "ConfigManager",
-    "PDFProcessor",
     "ImageProcessor",
     "OCREngine",
     "ResultMerger",
     "ProcessingService",
+    "get_pdf_processor",
 ]

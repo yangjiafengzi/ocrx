@@ -1,152 +1,171 @@
-# -- coding: utf-8 --
+# -*- coding: utf-8 -*-
 """
-PDF 处理模块
-负责将 PDF 文件转换为图片
+PDF处理模块
+负责PDF文件的转换和处理
 """
 
-import fitz  # PyMuPDF
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class PDFProcessor:
-    """PDF 处理器"""
+    """PDF处理器"""
 
     def __init__(self, scale_factor: float = 3.0):
         """
-        初始化 PDF 处理器
+        初始化PDF处理器
 
         Args:
-            scale_factor: PDF 渲染缩放比例，默认 3.0
+            scale_factor: PDF渲染缩放比例，越大越清晰但处理越慢
         """
         self.scale_factor = scale_factor
+        self._fitz = None
+        self._init_fitz()
 
-    def parse_page_range(self, page_range_str: str, total_pages: int) -> List[int]:
+    def _init_fitz(self):
+        """延迟初始化 fitz 模块"""
+        if self._fitz is None:
+            try:
+                import fitz
+                self._fitz = fitz
+            except ImportError:
+                logger.error("无法导入 fitz 模块，请确保 PyMuPDF 已正确安装")
+                raise
+
+    def pdf_to_images(
+        self,
+        pdf_path: str,
+        page_range: Optional[str] = None
+    ) -> List[Tuple[int, bytes]]:
+        """
+        将PDF转换为图片
+
+        Args:
+            pdf_path: PDF文件路径
+            page_range: 页码范围字符串，如 "1,3,5-10"，None表示全部
+
+        Returns:
+            [(页码, 图片数据), ...] 列表
+        """
+        self._init_fitz()
+        fitz = self._fitz
+
+        pdf_file = Path(pdf_path)
+        if not pdf_file.exists():
+            raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
+
+        images = []
+
+        try:
+            doc = fitz.open(str(pdf_file))
+            total_pages = len(doc)
+
+            if total_pages == 0:
+                logger.warning(f"PDF文件为空: {pdf_file.name}")
+                return images
+
+            # 解析页码范围
+            pages_to_process = self._parse_page_range(page_range, total_pages)
+
+            for page_num in pages_to_process:
+                if page_num < 1 or page_num > total_pages:
+                    logger.warning(f"页码 {page_num} 超出范围 (1-{total_pages})")
+                    continue
+
+                try:
+                    page = doc[page_num - 1]  # fitz使用0-based索引
+                    mat = fitz.Matrix(self.scale_factor, self.scale_factor)
+                    pix = page.get_pixmap(matrix=mat)
+                    img_data = pix.tobytes("png")
+                    images.append((page_num, img_data))
+                    logger.debug(f"PDF第 {page_num} 页转换完成")
+
+                except Exception as e:
+                    logger.error(f"PDF第 {page_num} 页转换失败: {e}")
+                    continue
+
+            doc.close()
+            logger.info(f"PDF转换完成: {pdf_file.name}, 共 {len(images)} 页")
+
+        except Exception as e:
+            logger.error(f"PDF处理失败 {pdf_file.name}: {e}")
+            raise
+
+        return images
+
+    def _parse_page_range(self, page_range: Optional[str], total_pages: int) -> List[int]:
         """
         解析页码范围字符串
 
         Args:
-            page_range_str: 页码范围字符串，如 "1,3,5-10"
+            page_range: 页码范围字符串，如 "1,3,5-10"
             total_pages: 总页数
 
         Returns:
-            需要处理的页码列表（从 1 开始）
+            页码列表
         """
-        if not page_range_str or page_range_str.strip() == "":
+        if not page_range or page_range.strip() == "":
             return list(range(1, total_pages + 1))
 
-        pages_to_process = []
-        parts = page_range_str.split(',')
+        pages = set()
+        parts = page_range.split(",")
 
         for part in parts:
             part = part.strip()
             if not part:
                 continue
 
-            if '-' in part:
-                # 范围，如 "5-10"
+            if "-" in part:
+                # 处理范围，如 "5-10"
                 try:
-                    start, end = part.split('-', 1)
+                    start, end = part.split("-")
                     start = int(start.strip())
                     end = int(end.strip())
-                    # 确保范围在有效范围内
-                    start = max(1, min(start, total_pages))
-                    end = max(1, min(end, total_pages))
-                    if start <= end:
-                        pages_to_process.extend(range(start, end + 1))
+                    pages.update(range(start, end + 1))
                 except ValueError:
-                    logger.warning(f"无效的页码范围：{part}")
+                    logger.warning(f"无效的页码范围: {part}")
+                    continue
             else:
-                # 单个页码
+                # 处理单页
                 try:
-                    page_num = int(part)
-                    if 1 <= page_num <= total_pages:
-                        pages_to_process.append(page_num)
+                    page = int(part)
+                    pages.add(page)
                 except ValueError:
-                    logger.warning(f"无效的页码：{part}")
+                    logger.warning(f"无效的页码: {part}")
+                    continue
 
-        # 去重并排序
-        pages_to_process = sorted(list(set(pages_to_process)))
+        return sorted(list(pages))
 
-        if not pages_to_process:
-            return list(range(1, total_pages + 1))
-
-        return pages_to_process
-
-    def pdf_to_images(self, pdf_path: str, page_range_str: str = None) -> List[Tuple[int, bytes]]:
+    def get_pdf_info(self, pdf_path: str) -> dict:
         """
-        将 PDF 转换为图片列表
+        获取PDF文件信息
 
         Args:
-            pdf_path: PDF 文件路径
-            page_range_str: 页码范围字符串
+            pdf_path: PDF文件路径
 
         Returns:
-            [(页码，图片数据), ...] 列表
+            PDF信息字典
         """
-        pdf_path = Path(pdf_path)
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF 文件不存在：{pdf_path}")
+        self._init_fitz()
+        fitz = self._fitz
 
-        images = []
+        pdf_file = Path(pdf_path)
+        if not pdf_file.exists():
+            raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
 
         try:
-            doc = fitz.open(pdf_path)
-            total_pages = len(doc)
-
-            # 解析页码范围
-            pages_to_process = self.parse_page_range(page_range_str, total_pages)
-
-            logger.info(f"PDF 共 {total_pages} 页，将处理 {len(pages_to_process)} 页")
-
-            for page_num in pages_to_process:
-                # fitz 的页码从 0 开始
-                page = doc[page_num - 1]
-
-                # 创建缩放矩阵
-                zoom = self.scale_factor
-                mat = fitz.Matrix(zoom, zoom)
-
-                # 渲染页面为图片
-                pix = page.get_pixmap(matrix=mat)
-
-                # 转换为 PNG 格式
-                img_data = pix.tobytes("png")
-
-                images.append((page_num, img_data))
-                logger.debug(f"已转换第 {page_num} 页")
-
+            doc = fitz.open(str(pdf_file))
+            info = {
+                "page_count": len(doc),
+                "metadata": doc.metadata,
+                "file_size": pdf_file.stat().st_size,
+            }
             doc.close()
-            logger.info(f"成功转换 {len(images)} 页")
+            return info
 
         except Exception as e:
-            logger.error(f"PDF 转换失败：{e}")
-            raise
-
-        return images
-
-    def get_pdf_page_count(self, pdf_path: str) -> int:
-        """
-        获取 PDF 页数
-
-        Args:
-            pdf_path: PDF 文件路径
-
-        Returns:
-            页数
-        """
-        pdf_path = Path(pdf_path)
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF 文件不存在：{pdf_path}")
-
-        try:
-            doc = fitz.open(pdf_path)
-            page_count = len(doc)
-            doc.close()
-            return page_count
-        except Exception as e:
-            logger.error(f"获取 PDF 页数失败：{e}")
+            logger.error(f"获取PDF信息失败 {pdf_file.name}: {e}")
             raise
