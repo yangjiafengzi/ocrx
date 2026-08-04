@@ -19,7 +19,7 @@ from ..example_library import ExampleLibrary
 
 # 导入处理器
 from .example_manager_ui import ExampleManagerUI
-from .theme import BORDER, PRIMARY, TEXT, setup_styles
+from .theme import BG, BORDER, PRIMARY, TEXT, setup_styles
 from .handlers import (
     SaveHandler, CopyHandler, ClipboardHandler,
     ResultHandler, PromptHandler, ProgressHandler
@@ -178,13 +178,28 @@ class MainWindow:
         self.create_bottom_buttons(main_frame)
 
     def create_config_widgets(self, parent):
-        """创建配置页面组件"""
+        """创建配置页面组件（可滚动，窗口缩小时内容不会被遮挡）"""
         parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(3, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
+
+        # 可滚动画布 + 纵向滚动条
+        self.config_canvas = tk.Canvas(parent, bg=BG, highlightthickness=0, borderwidth=0)
+        self.config_scrollbar = ttk.Scrollbar(
+            parent, orient="vertical", command=self.config_canvas.yview
+        )
+        self.config_canvas.configure(yscrollcommand=self.config_scrollbar.set)
+        self.config_canvas.grid(row=0, column=0, sticky="nsew")
+        self.config_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        inner = ttk.Frame(self.config_canvas)
+        self._config_window_id = self.config_canvas.create_window(
+            (0, 0), window=inner, anchor="nw"
+        )
+        inner.grid_columnconfigure(0, weight=1)
         row = 0
 
         # ===== API 设置 =====
-        api_frame = ttk.LabelFrame(parent, text="API 设置", style="Card.TLabelframe")
+        api_frame = ttk.LabelFrame(inner, text="API 设置", style="Card.TLabelframe")
         api_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=(12, 6))
         api_frame.grid_columnconfigure(1, weight=1)
 
@@ -202,7 +217,7 @@ class MainWindow:
         row += 1
 
         # ===== 文件与输出 =====
-        files_frame = ttk.LabelFrame(parent, text="文件与输出", style="Card.TLabelframe")
+        files_frame = ttk.LabelFrame(inner, text="文件与输出", style="Card.TLabelframe")
         files_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
         files_frame.grid_columnconfigure(1, weight=1)
 
@@ -234,7 +249,7 @@ class MainWindow:
         row += 1
 
         # ===== 识别参数 =====
-        params_frame = ttk.LabelFrame(parent, text="识别参数", style="Card.TLabelframe")
+        params_frame = ttk.LabelFrame(inner, text="识别参数", style="Card.TLabelframe")
         params_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
         params_frame.grid_columnconfigure(1, weight=1)
 
@@ -260,7 +275,7 @@ class MainWindow:
         row += 1
 
         # ===== 提示词 =====
-        prompt_frame = ttk.LabelFrame(parent, text="提示词", style="Card.TLabelframe")
+        prompt_frame = ttk.LabelFrame(inner, text="提示词", style="Card.TLabelframe")
         prompt_frame.grid(row=row, column=0, sticky="nsew", padx=14, pady=6)
         prompt_frame.grid_columnconfigure(1, weight=1)
         prompt_frame.grid_rowconfigure(1, weight=1)
@@ -310,12 +325,36 @@ class MainWindow:
         )
 
         # 进度条区域
-        self.progress_handler.create_widgets(parent, row)
+        self.progress_handler.create_widgets(inner, row)
         self.current_task_label = self.progress_handler.current_task_label
         self.progress_var = self.progress_handler.progress_var
         self.progress_bar = self.progress_handler.progress_bar
         self.detail_progress_var = self.progress_handler.detail_progress_var
         row += 1
+
+        # 滚动区域联动
+        self.config_canvas.bind("<Configure>", self._on_config_canvas_configure)
+        inner.bind("<Configure>", self._on_config_inner_configure)
+        self._bind_mousewheel(inner)
+
+    def _on_config_canvas_configure(self, event):
+        """画布宽度变化时，让内容区跟随宽度。"""
+        if hasattr(self, "_config_window_id"):
+            self.config_canvas.itemconfigure(self._config_window_id, width=event.width)
+
+    def _on_config_inner_configure(self, event):
+        """内容尺寸变化时更新滚动范围。"""
+        self.config_canvas.configure(scrollregion=self.config_canvas.bbox("all"))
+
+    def _bind_mousewheel(self, widget):
+        """递归绑定鼠标滚轮，保证滚动条在配置页任意位置可用。"""
+        widget.bind("<MouseWheel>", self._on_config_mousewheel)
+        for child in widget.winfo_children():
+            self._bind_mousewheel(child)
+
+    def _on_config_mousewheel(self, event):
+        if hasattr(self, "config_canvas"):
+            self.config_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
     def create_log_widgets(self, parent):
         """创建日志页面组件"""

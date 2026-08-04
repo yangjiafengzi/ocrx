@@ -8,6 +8,7 @@
 
 import tkinter as tk
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -148,3 +149,31 @@ def test_save_config_silent_on_close(ui_app, monkeypatch):
     monkeypatch.setattr(mw_mod.messagebox, "showinfo", lambda *a: dialogs.append(a))
     ui_app.save_config(show_dialog=False)
     assert dialogs == []
+
+
+def test_config_page_scrollable_when_window_small(ui_app):
+    """回归测试：窗口缩小时配置页应有纵向滚动条，滚轮可滚动到被遮挡内容。"""
+    ui_app.root.minsize(400, 300)
+    ui_app.root.geometry("900x450")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    canvas = ui_app.config_canvas
+    assert canvas.winfo_exists()
+    assert ui_app.config_scrollbar.winfo_exists()
+
+    # 内容应高于可视区域（复现“被遮挡”场景）
+    top, bottom = canvas.yview()
+    assert bottom < 1.0, "配置页内容未超出可视区，无法复现遮挡问题"
+
+    # 向下滚动应生效
+    before = canvas.yview()
+    ui_app._on_config_mousewheel(SimpleNamespace(delta=-120))
+    ui_app.root.update_idletasks()
+    after = canvas.yview()
+    assert after[0] > before[0], "鼠标滚轮未生效"
+
+    # 向上滚回顶部
+    ui_app._on_config_mousewheel(SimpleNamespace(delta=120))
+    ui_app.root.update_idletasks()
+    assert canvas.yview()[0] < after[0]

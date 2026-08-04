@@ -48,7 +48,12 @@ def main():
     mw_mod.StructuredLogger = TestLogger
     mw_mod.ExampleLibrary = lambda: ExampleLibrary(str(td / "lib"))
 
+    geometry = sys.argv[2] if len(sys.argv) > 2 else "1200x900"
+    scroll_units = int(sys.argv[3]) if len(sys.argv) > 3 else 0
     app = mw_mod.MainWindow(root)
+    root.geometry(geometry)
+    if int(geometry.split("x")[1]) < 700:
+        root.minsize(400, 300)
 
     # 填充示例数据，让截图更真实
     app.base_url_entry.insert(0, "https://api.example.com/v1")
@@ -67,6 +72,10 @@ def main():
 
     def snap(name, tab):
         app.notebook.select(tab)
+        root.update_idletasks()
+        root.update()
+        for _ in range(scroll_units):
+            app.config_canvas.yview_scroll(1, "units")
         root.update_idletasks()
         root.update()
         ImageGrab.grab(window=hwnd).save(outdir / name)
