@@ -6,6 +6,8 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
+
+from ..theme import BORDER, SURFACE, TEXT
 from .base_handler import BaseHandler
 
 
@@ -32,8 +34,14 @@ class ResultHandler(BaseHandler):
             parent, 
             wrap=tk.WORD,
             font=("Consolas", 11),
-            padx=10,
-            pady=10
+            bg=SURFACE,
+            fg=TEXT,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            insertbackground=TEXT,
+            padx=12,
+            pady=12
         )
         self.text_widget.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
@@ -45,30 +53,35 @@ class ResultHandler(BaseHandler):
         ttk.Button(
             button_frame, 
             text="📋 复制全部", 
+            style="Secondary.TButton",
             command=self.copy_all
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             button_frame, 
             text="📄 复制选中项", 
+            style="Secondary.TButton",
             command=self.copy_selection
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             button_frame, 
             text="💾 保存到文件", 
+            style="Secondary.TButton",
             command=self.save_to_file
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             button_frame, 
             text="🗑️ 清空", 
+            style="Secondary.TButton",
             command=self.clear
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             button_frame, 
             text="🔄 刷新", 
+            style="Secondary.TButton",
             command=self.refresh
         ).pack(side=tk.LEFT, padx=5)
         
@@ -104,6 +117,7 @@ class ResultHandler(BaseHandler):
                 # 清空并插入新内容
                 self.text_widget.delete(1.0, tk.END)
                 self.text_widget.insert(1.0, content)
+                self.text_widget.config(state=tk.DISABLED)
                 self.logger.info("识别结果已显示到结果页面")
             except Exception as e:
                 self.logger.error(f"显示结果失败: {e}")
@@ -173,7 +187,6 @@ class ResultHandler(BaseHandler):
         
         # 如果内容为空或者是初始提示，显示提示
         if not content.strip() or "识别结果将显示在这里" in content:
-            self.clear()
             messagebox.showinfo("提示", "暂无识别结果，请先进行识别操作")
         else:
             # 重新显示当前内容（刷新界面）
@@ -182,6 +195,7 @@ class ResultHandler(BaseHandler):
             self.text_widget.delete(1.0, tk.END)
             self.text_widget.insert(1.0, current_content)
             self.text_widget.see(1.0)  # 滚动到顶部
+            self.text_widget.config(state=tk.DISABLED)
             messagebox.showinfo("成功", "界面已刷新")
 
     def _create_context_menu(self):

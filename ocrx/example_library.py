@@ -120,8 +120,13 @@ class ExampleLibrary:
                 logger.error(f"图片不存在：{image_path}")
                 return None
                 
-            # 生成ID
-            ex_id = self._generate_id(image_path)
+            # 生成ID并确保唯一（同一图片多次添加会得到不同的ID）
+            base_id = self._generate_id(image_path)
+            ex_id = base_id
+            counter = 2
+            while any(ex.id == ex_id for ex in self.examples):
+                ex_id = f"{base_id}_{counter}"
+                counter += 1
             
             # 复制图片到库目录
             dst_filename = f"{ex_id}.png"

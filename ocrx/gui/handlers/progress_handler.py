@@ -31,7 +31,7 @@ class ProgressHandler(BaseHandler):
             parent: 父容器
             row: 行位置
         """
-        progress_frame = ttk.LabelFrame(parent, text="整体进度")
+        progress_frame = ttk.LabelFrame(parent, text="整体进度", style="Card.TLabelframe")
         progress_frame.grid(row=row, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
         progress_frame.grid_columnconfigure(1, weight=1)
 

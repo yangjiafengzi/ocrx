@@ -18,15 +18,17 @@ logger = logging.getLogger(__name__)
 class ClipboardHistory:
     """剪贴板历史记录管理"""
 
-    def __init__(self, max_history: int = 10):
+    def __init__(self, max_history: int = 10, root=None):
         """
         初始化剪贴板历史记录
 
         Args:
             max_history: 最大历史记录数量
+            root: 可复用的 tkinter 根窗口；传入后不再每次新建/销毁窗口
         """
         self.history: List[Dict[str, Any]] = []
         self.max_history = max_history
+        self._root = root
 
     def add_record(self, content: str, success: bool = True, method: str = "auto", error_msg: str = ""):
         """
@@ -93,15 +95,21 @@ class ClipboardHistory:
         
         for attempt in range(max_retries + 1):
             try:
-                # 创建 tkinter 根窗口
-                root = tk.Tk()
-                root.withdraw()
-                
-                # 清空并设置剪贴板
-                root.clipboard_clear()
-                root.clipboard_append(content)
-                root.update()
-                root.destroy()
+                if self._root is not None:
+                    # 复用主窗口，避免每次新建/销毁 tk 根窗口
+                    self._root.clipboard_clear()
+                    self._root.clipboard_append(content)
+                    self._root.update()
+                else:
+                    # 创建 tkinter 根窗口
+                    root = tk.Tk()
+                    root.withdraw()
+
+                    # 清空并设置剪贴板
+                    root.clipboard_clear()
+                    root.clipboard_append(content)
+                    root.update()
+                    root.destroy()
                 
                 logger.info(f"tkinter 复制成功（尝试 {attempt + 1}）")
                 self.add_record(content, success=True, method="tkinter")

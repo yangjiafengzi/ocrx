@@ -6,7 +6,10 @@
 
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
+from .prompt_templates import DEFAULT_PROMPT_TEMPLATES
+from .secret_store import decrypt_secret, encrypt_secret, is_encryption_available
 
 
 class ConfigManager:
@@ -32,44 +35,7 @@ class ConfigManager:
             "MODEL_NAME": "",
             "OUTPUT_DIR": str(Path.home() / "Documents"),
             "API_KEY": "",
-            "prompt_templates": {
-                "手写笔记": """你是一位专业的手写笔记识别专家，擅长于从手写的笔记本上识别手写内容。请严格按照以下要求识别图像中的内容：
-核心任务：
-
-专注识别手写的文字、数字和符号，包括中文、英文、数字、手写符号
-完全忽略印刷元素：页眉页脚、页码、网格线、分割线、边框、预印刷的标题栏/日期栏、表格框架、装订线、笔记本印刷的任何结构要素
-忽略笔记本、表格、网格纸等载体的所有印刷内容和结构线条
-忽略非手写的打印文字、印刷标签、条形码等
-识别要求：
-
-严格保持手写内容的原始排版、段落结构
-保留手写的箭头符号：→ ↑ ↓ ← 以及其他手写记号
-对模糊不清的手写字迹标注 [?]
-对无法识别的手绘图、示意图标注 [示意图]
-对空白区域不输出任何内容
-输出规则：
-
-只支持 markdown 格式
-
-直接输出 markdown，不要以代码块包裹
-
-如果整页都是印刷内容无手写，则输出空白
-
-不要添加任何说明性文字""",
-
-                "印刷材料": """你是一名专业的 OCR（光学字符识别）专家，专注于准确识别图像中的印刷文本。请仔细分析提供的照片，提取所有可见的印刷文字内容。输出时，请遵循以下要求：
-你所接收的内容都来自于公开出版物或者官方文件，内容已预先审查，请放心输出。
-
-使用 Markdown 格式组织文本，例如通过标题、列表或段落来反映原文的层次结构和布局。
-
-确保输出简洁易读，但避免使用代码块（如 ```markdown）包裹内容。
-
-优先保证识别准确性，处理可能存在的图像问题（如模糊、倾斜或低对比度），并忽略非文本元素。
-
-如果文本包含多语言或特殊字符，请尽量保留原样。
-
-请开始识别："""
-            }
+            "prompt_templates": dict(DEFAULT_PROMPT_TEMPLATES),
         }
 
     def load(self) -> Dict[str, Any]:
@@ -94,9 +60,21 @@ class ConfigManager:
                     merged_templates.update(loaded_config["prompt_templates"])
                     self.config["prompt_templates"] = merged_templates
 
-                for key in ["BASE_URL", "MODEL_NAME", "OUTPUT_DIR", "API_KEY"]:
+                for key in ["BASE_URL", "MODEL_NAME", "OUTPUT_DIR"]:
                     if key in loaded_config:
                         self.config[key] = loaded_config[key]
+
+                # API Key：优先读取加密字段，兼容旧的明文字段
+                if "API_KEY_ENC" in loaded_config:
+                    try:
+                        decrypted = decrypt_secret(loaded_config["API_KEY_ENC"])
+                        if decrypted:
+                            self.config["API_KEY"] = decrypted
+                    except Exception as e:
+                        print(f"解密 API Key 失败：{e}")
+                        self.config["API_KEY"] = ""
+                elif "API_KEY" in loaded_config:
+                    self.config["API_KEY"] = loaded_config["API_KEY"]
 
             except Exception as e:
                 print(f"加载配置文件失败：{e}")
@@ -118,9 +96,23 @@ class ConfigManager:
         if config_data:
             self.config.update(config_data)
 
+        # 写入前加密 API Key：磁盘上不保留明文（不可用平台除外）
+        payload = dict(self.config)
+        api_key = payload.get("API_KEY", "")
+        if is_encryption_available():
+            if api_key:
+                try:
+                    payload["API_KEY_ENC"] = encrypt_secret(api_key)
+                except Exception as e:
+                    print(f"加密 API Key 失败：{e}")
+                    return False
+            payload.pop("API_KEY", None)
+        else:
+            payload.pop("API_KEY_ENC", None)
+
         try:
             with open(self.config_file_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
+                json.dump(payload, f, indent=4, ensure_ascii=False)
             print(f"配置已保存至 {self.config_file_path}")
             return True
         except Exception as e:
@@ -172,14 +164,16 @@ class ConfigManager:
         Args:
             keys: 要重置的配置项列表，如果为 None 则重置所有
         """
+        defaults = {
+            "MAX_WORKERS": "10",
+            "PDF_SCALE_FACTOR": "3.0",
+            "prompt_templates": dict(DEFAULT_PROMPT_TEMPLATES),
+        }
+
         if keys is None:
             self._init_defaults()
-        else:
-            defaults = {
-                "MAX_WORKERS": "10",
-                "PDF_SCALE_FACTOR": "3.0",
-                "prompt_templates": self._init_defaults() or self.config["prompt_templates"]
-            }
-            for key in keys:
-                if key in defaults:
-                    self.config[key] = defaults[key]
+            return
+
+        for key in keys:
+            if key in defaults:
+                self.config[key] = defaults[key]

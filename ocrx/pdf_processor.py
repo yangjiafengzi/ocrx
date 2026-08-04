@@ -169,3 +169,15 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"获取PDF信息失败 {pdf_file.name}: {e}")
             raise
+
+    def get_pdf_page_count(self, pdf_path: str) -> int:
+        """
+        获取PDF页数
+
+        Args:
+            pdf_path: PDF文件路径
+
+        Returns:
+            PDF页数
+        """
+        return self.get_pdf_info(pdf_path)["page_count"]

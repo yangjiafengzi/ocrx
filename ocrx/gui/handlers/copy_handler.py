@@ -28,12 +28,12 @@ class CopyHandler(BaseHandler):
             (是否通过, 总页数, 提示信息)
         """
         total_pages = 0
+        pdf_processor = getattr(self.processing_service, "pdf_processor", None) or PDFProcessor()
         
         for file_path in file_paths:
             path_obj = Path(file_path)
             if path_obj.suffix.lower() == '.pdf':
                 try:
-                    pdf_processor = PDFProcessor()
                     page_count = pdf_processor.get_pdf_page_count(file_path)
                     total_pages += page_count
                 except Exception as e:

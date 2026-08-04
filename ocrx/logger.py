@@ -5,6 +5,7 @@
 """
 
 import logging
+import logging.handlers
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable, List, Dict, Any
@@ -13,7 +14,13 @@ from typing import Optional, Callable, List, Dict, Any
 class StructuredLogger:
     """结构化日志系统"""
 
-    def __init__(self, log_file_path: str = None, gui_callback: Optional[Callable] = None):
+    def __init__(
+        self,
+        log_file_path: str = None,
+        gui_callback: Optional[Callable] = None,
+        max_bytes: int = 1_048_576,
+        backup_count: int = 3
+    ):
         """
         初始化日志系统
 
@@ -24,6 +31,8 @@ class StructuredLogger:
         self.log_file_path = Path(log_file_path) if log_file_path else Path.home() / ".ocrx_gui.log"
         self.logs: List[Dict[str, Any]] = []
         self.gui_callback = gui_callback
+        self.max_bytes = max_bytes
+        self.backup_count = backup_count
 
         # 设置日志级别
         self.levels = {
@@ -47,10 +56,19 @@ class StructuredLogger:
         # 清除现有的处理器
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
 
         # 创建文件处理器
         try:
-            file_handler = logging.FileHandler(self.log_file_path, encoding='utf-8')
+            file_handler = logging.handlers.RotatingFileHandler(
+                self.log_file_path,
+                maxBytes=self.max_bytes,
+                backupCount=self.backup_count,
+                encoding='utf-8'
+            )
             file_handler.setLevel(logging.DEBUG)
 
             # 创建格式器
@@ -61,6 +79,8 @@ class StructuredLogger:
 
             # 添加处理器
             self.logger.addHandler(file_handler)
+            # 避免与根日志器的处理器重复输出
+            self.logger.propagate = False
             print("文件日志记录器设置成功")
         except Exception as e:
             print(f"文件日志记录器设置失败：{e}")
@@ -178,3 +198,12 @@ class StructuredLogger:
     def clear_logs(self):
         """清空日志"""
         self.logs.clear()
+
+    def close(self):
+        """关闭文件日志处理器，释放文件句柄。"""
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass

@@ -46,7 +46,11 @@ Thumbs.db
 .ocrx_gui.log
 installer/
 temp/
-test_*.py
+/test_*.py
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Keep these
 !assets/README.txt

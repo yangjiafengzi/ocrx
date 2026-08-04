@@ -25,7 +25,7 @@ REM Step 2: PyInstaller
 echo.
 echo [2/4] Building with PyInstaller...
 echo     This may take 5-10 minutes, please wait...
-pyinstaller --name="OCRX-2.1.0" --windowed --onefile --icon=assets\icon.ico --add-data="ocrx;ocrx" --add-data="assets;assets" --additional-hooks-dir=. --hidden-import=tkinter --hidden-import=PIL --hidden-import=PIL._imaging --hidden-import=PIL._imagingtk --hidden-import=PIL._tkinter_finder --hidden-import=fitz --hidden-import=fitz.fitz --hidden-import=PyMuPDF --collect-all=fitz --collect-all=PyMuPDF --copy-metadata=PyMuPDF --clean --noconfirm main.py
+python -m PyInstaller --name="OCRX-2.1.0" --windowed --onefile --icon=assets\icon.ico --add-data="ocrx;ocrx" --add-data="assets;assets" --additional-hooks-dir=. --hidden-import=tkinter --hidden-import=PIL --hidden-import=PIL._imaging --hidden-import=PIL._imagingtk --hidden-import=PIL._tkinter_finder --hidden-import=fitz --hidden-import=fitz.fitz --hidden-import=PyMuPDF --hidden-import=openai --collect-all=fitz --collect-all=PyMuPDF --collect-all=openai --copy-metadata=PyMuPDF --clean --noconfirm main.py
 
 if errorlevel 1 (
     echo.
@@ -74,4 +74,3 @@ echo Output files:
 echo   - Single exe: dist\OCRX-2.1.0.exe
 echo   - Installer:  installer\OCRX_2.1.0_Setup.exe (if Inno Setup installed)
 echo.
-pause

@@ -10,6 +10,7 @@ from pathlib import Path
 import threading
 from typing import List, Optional
 
+from .. import __version__
 from ..config import ConfigManager
 from ..logger import StructuredLogger
 from ..clipboard import ClipboardHistory
@@ -18,6 +19,7 @@ from ..example_library import ExampleLibrary
 
 # 导入处理器
 from .example_manager_ui import ExampleManagerUI
+from .theme import BORDER, PRIMARY, TEXT, setup_styles
 from .handlers import (
     SaveHandler, CopyHandler, ClipboardHandler,
     ResultHandler, PromptHandler, ProgressHandler
@@ -33,13 +35,14 @@ class MainWindow:
         self.root.title("OCRX-智能文字识别")
         self.root.geometry("1200x900")
         self.root.minsize(900, 700)
+        setup_styles(self.root)
 
         # 任务执行状态
         self.is_running = False
         self.current_task = None
 
         # 剪贴板历史记录
-        self.clipboard_history = ClipboardHistory()
+        self.clipboard_history = ClipboardHistory(root=self.root)
 
         # 初始化配置管理器
         self.config_manager = ConfigManager()
@@ -126,6 +129,20 @@ class MainWindow:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+        # 页头
+        header = ttk.Frame(main_frame, style="Header.TFrame")
+        header.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(
+            header,
+            text="OCRX 智能文字识别",
+            style="HeaderTitle.TLabel",
+        ).pack(side=tk.LEFT, padx=18, pady=(8, 2))
+        ttk.Label(
+            header,
+            text=f"基于 AI 的批量 OCR 工具 · v{__version__}",
+            style="HeaderSub.TLabel",
+        ).pack(side=tk.LEFT, padx=4, pady=(12, 2))
+
         # 创建 notebook 用于分页
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
@@ -151,6 +168,7 @@ class MainWindow:
         # 识别结果页面
         result_frame = ttk.Frame(self.notebook)
         self.notebook.add(result_frame, text="识别结果")
+        self.result_frame = result_frame
 
         # 创建各页面组件
         self.create_config_widgets(config_frame)
@@ -161,73 +179,100 @@ class MainWindow:
 
     def create_config_widgets(self, parent):
         """创建配置页面组件"""
-        parent.grid_columnconfigure(1, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(3, weight=1)
         row = 0
 
-        # Base URL
-        ttk.Label(parent, text="Base URL:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.base_url_entry = ttk.Entry(parent, width=70)
-        self.base_url_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+        # ===== API 设置 =====
+        api_frame = ttk.LabelFrame(parent, text="API 设置", style="Card.TLabelframe")
+        api_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=(12, 6))
+        api_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(api_frame, text="Base URL:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        self.base_url_entry = ttk.Entry(api_frame, width=70)
+        self.base_url_entry.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+
+        ttk.Label(api_frame, text="API Key:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
+        self.api_key_entry = ttk.Entry(api_frame, width=70, show="*")
+        self.api_key_entry.grid(row=1, column=1, padx=8, pady=6, sticky="ew")
+
+        ttk.Label(api_frame, text="Model Name:").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+        self.model_name_entry = ttk.Entry(api_frame, width=70)
+        self.model_name_entry.grid(row=2, column=1, padx=8, pady=6, sticky="ew")
         row += 1
 
-        # API Key
-        ttk.Label(parent, text="API Key:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.api_key_entry = ttk.Entry(parent, width=70, show="*")
-        self.api_key_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+        # ===== 文件与输出 =====
+        files_frame = ttk.LabelFrame(parent, text="文件与输出", style="Card.TLabelframe")
+        files_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
+        files_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(files_frame, text="文件路径:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        self.file_paths_entry = ttk.Entry(files_frame, width=70)
+        self.file_paths_entry.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+
+        file_button_frame = ttk.Frame(files_frame, style="Card.TFrame")
+        file_button_frame.grid(row=0, column=2, padx=6, sticky="w")
+        ttk.Button(file_button_frame, text="选择文件", style="Secondary.TButton", command=self.select_files).pack(side=tk.LEFT, padx=2)
+        ttk.Button(file_button_frame, text="清空", style="Secondary.TButton", command=self.clear_file_paths).pack(side=tk.LEFT, padx=2)
+
+        format_hint = ttk.Label(
+            files_frame,
+            text="支持格式：PDF、JPG、PNG、BMP、GIF、TIFF、WebP、HEIC、RAW(CR2/NEF/ARW/DNG)",
+            style="Muted.TLabel",
+        )
+        format_hint.grid(row=1, column=1, sticky="w", padx=8, pady=(0, 4))
+
+        ttk.Label(files_frame, text="输出目录:").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+        self.output_dir_entry = ttk.Entry(files_frame, width=70)
+        self.output_dir_entry.grid(row=2, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Button(
+            files_frame,
+            text="选择目录",
+            style="Secondary.TButton",
+            command=self.select_output_dir,
+        ).grid(row=2, column=2, padx=8, pady=6)
         row += 1
 
-        # Model Name
-        ttk.Label(parent, text="Model Name:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.model_name_entry = ttk.Entry(parent, width=70)
-        self.model_name_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+        # ===== 识别参数 =====
+        params_frame = ttk.LabelFrame(parent, text="识别参数", style="Card.TLabelframe")
+        params_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
+        params_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(params_frame, text="PDF 缩放比例:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        self.scale_combobox = ttk.Combobox(params_frame, values=self.scale_options, width=10, state="readonly")
+        self.scale_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=6)
+        ttk.Label(params_frame, text="建议值 1.0 ~ 5.0", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=8, pady=6)
+
+        ttk.Label(params_frame, text="最大并发数:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
+        self.workers_combobox = ttk.Combobox(params_frame, values=self.worker_options, width=10, state="readonly")
+        self.workers_combobox.grid(row=1, column=1, sticky="w", padx=8, pady=6)
+        ttk.Label(params_frame, text="建议值 5 ~ 20", style="Muted.TLabel").grid(row=1, column=2, sticky="w", padx=8, pady=6)
+
+        ttk.Label(params_frame, text="页码范围 (PDF):").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+        self.page_range_var = tk.StringVar(value="")
+        self.page_range_entry = ttk.Entry(params_frame, textvariable=self.page_range_var, width=20)
+        self.page_range_entry.grid(row=2, column=1, sticky="w", padx=8, pady=6)
+        ttk.Label(
+            params_frame,
+            text="例如: 1,3,5-10，留空表示全部",
+            style="Muted.TLabel",
+        ).grid(row=2, column=2, sticky="w", padx=8, pady=6)
         row += 1
 
-        # 文件路径
-        ttk.Label(parent, text="文件路径:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.file_paths_entry = ttk.Entry(parent, width=70)
-        self.file_paths_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+        # ===== 提示词 =====
+        prompt_frame = ttk.LabelFrame(parent, text="提示词", style="Card.TLabelframe")
+        prompt_frame.grid(row=row, column=0, sticky="nsew", padx=14, pady=6)
+        prompt_frame.grid_columnconfigure(1, weight=1)
+        prompt_frame.grid_rowconfigure(1, weight=1)
 
-        file_button_frame = ttk.Frame(parent)
-        file_button_frame.grid(row=row, column=2, padx=5, sticky='w')
-        ttk.Button(file_button_frame, text="选择文件", command=self.select_files).pack(side=tk.LEFT, padx=2)
-        ttk.Button(file_button_frame, text="清空", command=self.clear_file_paths).pack(side=tk.LEFT, padx=2)
-        
-        # 支持格式提示
-        row += 1
-        format_hint = ttk.Label(parent, text="支持格式：PDF、JPG、PNG、BMP、GIF、TIFF、WebP、HEIC、RAW(CR2/NEF/ARW/DNG)", foreground="gray", font=("微软雅黑", 8))
-        format_hint.grid(row=row, column=1, sticky="w", padx=10, pady=0)
-        row += 1
-
-        # 输出目录
-        ttk.Label(parent, text="输出目录:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.output_dir_entry = ttk.Entry(parent, width=70)
-        self.output_dir_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
-        ttk.Button(parent, text="选择目录", command=self.select_output_dir).grid(row=row, column=2, padx=5)
-        row += 1
-
-        # 缩放比例
-        ttk.Label(parent, text="PDF 缩放比例:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.scale_combobox = ttk.Combobox(parent, values=self.scale_options, width=10, state="readonly")
-        self.scale_combobox.grid(row=row, column=1, sticky="w", padx=10, pady=5)
-        ttk.Label(parent, text="(建议值：1.0 ~ 5.0)").grid(row=row, column=1, sticky="w", padx=120, pady=5)
-        row += 1
-
-        # 并发数
-        ttk.Label(parent, text="最大并发数:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.workers_combobox = ttk.Combobox(parent, values=self.worker_options, width=10, state="readonly")
-        self.workers_combobox.grid(row=row, column=1, sticky="w", padx=10, pady=5)
-        ttk.Label(parent, text="(建议值：5 ~ 20)").grid(row=row, column=1, sticky="w", padx=120, pady=5)
-        row += 1
-
-        # 提示词预设
-        ttk.Label(parent, text="OCR 提示词预设:").grid(row=row, column=0, sticky="w", padx=10, pady=5)
+        ttk.Label(prompt_frame, text="预设:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
         self.prompt_preset_var = tk.StringVar()
         self.prompt_preset_combobox = ttk.Combobox(
-            parent, textvariable=self.prompt_preset_var,
+            prompt_frame, textvariable=self.prompt_preset_var,
             values=list(self.prompt_templates.keys()), state="readonly", width=20
         )
         self.prompt_preset_combobox.bind("<<ComboboxSelected>>", self.on_prompt_preset_selected)
-        self.prompt_preset_combobox.grid(row=row, column=1, sticky="w", padx=10, pady=5)
+        self.prompt_preset_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=6)
 
         # 提示词预设管理按钮（在同一行）
         self.prompt_handler.set_widgets(
@@ -235,14 +280,26 @@ class MainWindow:
             self.prompt_preset_combobox,
             None  # 暂时设置为 None，后面再更新
         )
-        self.prompt_handler.create_preset_buttons(parent, row, 2)
-        row += 1
+        self.prompt_handler.create_preset_buttons(prompt_frame, 0, 2)
 
-        # 提示词编辑区
-        ttk.Label(parent, text="自定义提示词:").grid(row=row, column=0, sticky="nw", padx=10, pady=5)
-        self.prompt_text = scrolledtext.ScrolledText(parent, width=80, height=8)
-        self.prompt_text.grid(row=row, column=1, columnspan=2, padx=10, pady=5, sticky="nsew")
-        parent.grid_rowconfigure(row, weight=1)
+        ttk.Label(prompt_frame, text="自定义提示词:").grid(row=1, column=0, sticky="nw", padx=8, pady=6)
+        self.prompt_text = scrolledtext.ScrolledText(
+            prompt_frame,
+            width=80,
+            height=7,
+            wrap=tk.WORD,
+            font=("Microsoft YaHei UI", 10),
+            bg="#FFFFFF",
+            fg=TEXT,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=PRIMARY,
+            insertbackground=TEXT,
+            padx=10,
+            pady=8,
+        )
+        self.prompt_text.grid(row=1, column=1, columnspan=2, padx=8, pady=6, sticky="nsew")
         row += 1
 
         # 更新 PromptHandler 的 prompt_text 引用
@@ -251,14 +308,6 @@ class MainWindow:
             self.prompt_preset_combobox,
             self.prompt_text
         )
-
-        # 页面范围选择（PDF）
-        ttk.Label(parent, text="指定页码范围 (PDF):").grid(row=row, column=0, sticky="w", padx=10, pady=5)
-        self.page_range_var = tk.StringVar(value="")
-        self.page_range_entry = ttk.Entry(parent, textvariable=self.page_range_var, width=20)
-        self.page_range_entry.grid(row=row, column=1, sticky="w", padx=10, pady=5)
-        ttk.Label(parent, text="(例如: 1,3,5-10，留空表示全部)").grid(row=row, column=1, sticky="w", padx=150, pady=5)
-        row += 1
 
         # 进度条区域
         self.progress_handler.create_widgets(parent, row)
@@ -273,7 +322,21 @@ class MainWindow:
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        self.log_text = scrolledtext.ScrolledText(parent, wrap=tk.WORD, width=120, height=40)
+        self.log_text = scrolledtext.ScrolledText(
+            parent,
+            wrap=tk.WORD,
+            width=120,
+            height=40,
+            font=("Consolas", 10),
+            bg="#0F172A",
+            fg="#E2E8F0",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            insertbackground="#E2E8F0",
+            padx=10,
+            pady=10,
+        )
         self.log_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
     def create_clipboard_widgets(self, parent):
@@ -291,12 +354,12 @@ class MainWindow:
         button_frame = ttk.Frame(parent)
         button_frame.pack(fill=tk.X, pady=10)
 
-        ttk.Button(button_frame, text="识别并保存", command=self.start_ocr_and_save).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="识别并复制", command=self.start_ocr_and_copy).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="停止", command=self.stop_processing).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="保存配置", command=self.save_config).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="重置配置", command=self.reset_to_defaults).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="关于", command=self.show_about).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="识别并保存", style="Primary.TButton", command=self.start_ocr_and_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="识别并复制", style="Success.TButton", command=self.start_ocr_and_copy).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="停止", style="Danger.TButton", command=self.stop_processing).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="保存配置", style="Secondary.TButton", command=self.save_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="重置配置", style="Secondary.TButton", command=self.reset_to_defaults).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="关于", style="Secondary.TButton", command=self.show_about).pack(side=tk.RIGHT, padx=5)
 
     def log_callback(self, log_entry: dict):
         """日志回调函数"""
@@ -360,6 +423,8 @@ class MainWindow:
         if hasattr(self, 'prompt_preset_combobox'):
             self.prompt_preset_combobox['values'] = list(self.prompt_templates.keys())
             self.prompt_preset_var.set("手写笔记")
+            # 默认选中第一个预设，并同步填充提示词编辑区
+            self.on_prompt_preset_selected()
 
     def select_files(self):
         """选择文件"""
@@ -441,13 +506,28 @@ class MainWindow:
 
         page_range = self.page_range_var.get().strip()
 
+        try:
+            max_workers = int(self.workers_combobox.get().strip())
+            pdf_scale = float(self.scale_combobox.get().strip())
+        except (TypeError, ValueError):
+            messagebox.showerror("错误", "最大并发数或 PDF 缩放比例不是有效数字")
+            return None
+
+        output_dir = self.output_dir_entry.get().strip()
+        if not output_dir:
+            output_dir = str(Path.home() / "Documents")
+
+        if self.processing_service is None:
+            messagebox.showerror("错误", "处理服务初始化失败，请检查依赖（如 PyMuPDF）后重启程序。")
+            return None
+
         self.processing_service.update_config(
             api_key=api_key,
             base_url=base_url,
             model_name=model_name,
-            output_dir=self.output_dir_entry.get().strip(),
-            max_workers=int(self.workers_combobox.get().strip()),
-            pdf_scale=float(self.scale_combobox.get().strip())
+            output_dir=output_dir,
+            max_workers=max_workers,
+            pdf_scale=pdf_scale
         )
 
         return (file_paths.split(';'), prompt, page_range, example_images)
@@ -462,6 +542,10 @@ class MainWindow:
         if not params:
             return
 
+        if self.processing_service is None:
+            messagebox.showerror("错误", "处理服务初始化失败，请检查依赖后重启程序。")
+            return
+
         # 使用更安全的参数解包，支持向后兼容
         file_paths, prompt, page_range, *optional_params = params
         example_images = optional_params[0] if optional_params else None
@@ -470,10 +554,14 @@ class MainWindow:
 
         def run_save():
             try:
+                if self.processing_service:
+                    self.processing_service.reset_cancel()
                 results = self.save_handler.process_files(file_paths, prompt, page_range, example_images)
             finally:
                 self.is_running = False
                 self.current_task = None
+                if self.processing_service:
+                    self.processing_service.reset_cancel()
                 self._on_status_update("等待开始...")
                 self._on_progress_update(0, 1, 0.0, "idle")
 
@@ -491,6 +579,10 @@ class MainWindow:
         if not params:
             return
 
+        if self.processing_service is None:
+            messagebox.showerror("错误", "处理服务初始化失败，请检查依赖后重启程序。")
+            return
+
         # 使用更安全的参数解包，支持向后兼容
         file_paths, prompt, page_range, *optional_params = params
         example_images = optional_params[0] if optional_params else None
@@ -504,10 +596,14 @@ class MainWindow:
 
         def run_copy():
             try:
+                if self.processing_service:
+                    self.processing_service.reset_cancel()
                 success, result = self.copy_handler.process_files(file_paths, prompt, page_range, example_images)
             finally:
                 self.is_running = False
                 self.current_task = None
+                if self.processing_service:
+                    self.processing_service.reset_cancel()
                 self._on_status_update("等待开始...")
                 self._on_progress_update(0, 1, 0.0, "idle")
 
@@ -521,12 +617,17 @@ class MainWindow:
             messagebox.showinfo("提示", "当前没有运行的任务")
             return
 
-        self.is_running = False
-        self.logger.info("任务已停止", "Task")
-        messagebox.showinfo("提示", "任务已停止")
+        if self.processing_service:
+            self.processing_service.request_cancel()
+        self.logger.info("已请求停止任务，等待当前页面收尾", "Task")
+        messagebox.showinfo("提示", "已请求停止，正在识别的页面完成后将自动结束。")
 
-    def save_config(self):
-        """保存配置"""
+    def save_config(self, show_dialog: bool = True):
+        """保存配置
+
+        Args:
+            show_dialog: 是否在保存后弹出提示框（关闭窗口时应静默保存）
+        """
         config_data = {
             "BASE_URL": self.base_url_entry.get().strip(),
             "MODEL_NAME": self.model_name_entry.get().strip(),
@@ -538,7 +639,8 @@ class MainWindow:
         }
 
         self.config_manager.save(config_data)
-        messagebox.showinfo("提示", "配置已保存")
+        if show_dialog:
+            messagebox.showinfo("提示", "配置已保存")
 
     def reset_to_defaults(self):
         """重置配置为默认值"""
@@ -563,7 +665,7 @@ class MainWindow:
         """显示关于对话框"""
         messagebox.showinfo(
             "关于 OCRX",
-            "OCRX 智能文字识别系统 v2.0\n\n"
+            f"OCRX 智能文字识别系统 v{__version__}\n\n"
             "基于 AI 的 OCR 文字识别工具\n"
             "支持 PDF 和图片格式\n"
             "支持批量处理"
@@ -574,7 +676,7 @@ class MainWindow:
         self.result_handler.display(content)
 
         def switch_tab():
-            self.notebook.select(3)
+            self.notebook.select(self.result_frame)
         self.root.after(0, switch_tab)
 
     def on_closing(self):
@@ -582,8 +684,10 @@ class MainWindow:
         if self.is_running:
             if messagebox.askokcancel("退出", "任务正在运行，确定要退出吗？"):
                 self.is_running = False
-                self.save_config()
+                self.save_config(show_dialog=False)
                 self.root.destroy()
+                self.logger.close()
         else:
-            self.save_config()
+            self.save_config(show_dialog=False)
             self.root.destroy()
+            self.logger.close()

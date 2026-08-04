@@ -7,9 +7,9 @@
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Callable
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
-from .pdf_processor import PDFProcessor
 from .image_processor import ImageProcessor
 from .ocr_engine import OCREngine
 from .result_merger import ResultMerger
@@ -52,6 +52,7 @@ class ProcessingService:
         self.logger_inst = logger_inst or StructuredLogger()
 
         # 初始化各个处理器
+        from .pdf_processor import PDFProcessor
         self.pdf_processor = PDFProcessor(scale_factor=pdf_scale)
         self.image_processor = ImageProcessor()
         self.result_merger = ResultMerger(output_dir)
@@ -69,7 +70,22 @@ class ProcessingService:
         self._progress_callback: Optional[Callable] = None
         self._status_callback: Optional[Callable] = None
 
+        # 取消请求标志
+        self._cancel_event = threading.Event()
+
         self.logger_inst.info("处理服务初始化完成", "System")
+
+    def request_cancel(self):
+        """请求取消当前处理任务。"""
+        self._cancel_event.set()
+        self.logger_inst.warning("已收到取消请求", "System")
+
+    def reset_cancel(self):
+        """重置取消标志。"""
+        self._cancel_event.clear()
+
+    def _is_cancel_requested(self) -> bool:
+        return self._cancel_event.is_set()
 
     def set_progress_callback(self, callback: Callable):
         """设置进度回调"""
@@ -112,9 +128,13 @@ class ProcessingService:
         total_files = len(file_paths)
 
         for file_idx, file_path in enumerate(file_paths):
+            if self._is_cancel_requested():
+                self.logger_inst.warning("任务已取消，停止预处理", "FileProcess")
+                break
+
             path_obj = Path(file_path)
             if not path_obj.exists():
-                failed_files[path_obj.stem] = (False, None)
+                failed_files[path_obj.stem] = (False, "文件不存在")
                 continue
 
             suffix_lower = path_obj.suffix.lower()
@@ -132,14 +152,14 @@ class ProcessingService:
                     if img_data:
                         all_pages.append((path_obj.stem, 1, img_data))
                     else:
-                        failed_files[path_obj.stem] = (False, None)
+                        failed_files[path_obj.stem] = (False, "图片读取失败")
                 else:
                     self.logger_inst.warning(f"不支持的文件类型：{suffix_lower}", "FileProcess")
-                    failed_files[path_obj.stem] = (False, None)
+                    failed_files[path_obj.stem] = (False, f"不支持的文件类型：{suffix_lower}")
 
             except Exception as e:
                 self.logger_inst.error(f"处理文件失败 {path_obj.name}: {e}", "FileProcess")
-                failed_files[path_obj.stem] = (False, None)
+                failed_files[path_obj.stem] = (False, str(e))
 
             # 更新进度（0-20%）
             if progress_callback:
@@ -172,68 +192,91 @@ class ProcessingService:
 
         total_pages = len(pages)
         successful_results = []
+        batch_size = max(1, self.max_workers)
+        index = 0
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 提交所有任务
             future_to_index = {}
-            for i, (file_stem, page_num, img_data) in enumerate(pages):
-                identifier = (file_stem, page_num)
-                self.logger_inst.debug(f"提交任务：页面 {file_stem}-{page_num}", "OCR")
-                future = executor.submit(
-                    self.ocr_engine.process_single_image,
-                    prompt,
-                    identifier,
-                    img_data,
-                    5,  # max_retries
-                    example_images  # 传入少样本示例
-                )
-                future_to_index[future] = i
 
-            self.logger_inst.info(f"已提交所有 {len(future_to_index)} 个识别任务", "OCR")
+            def submit_until_full():
+                """分批提交任务，取消后不再提交新页面。"""
+                nonlocal index
+                while index < total_pages and len(future_to_index) < batch_size:
+                    if self._is_cancel_requested():
+                        break
+                    file_stem, page_num, img_data = pages[index]
+                    identifier = (file_stem, page_num)
+                    self.logger_inst.debug(f"提交任务：页面 {file_stem}-{page_num}", "OCR")
+                    future = executor.submit(
+                        self.ocr_engine.process_single_image,
+                        prompt,
+                        identifier,
+                        img_data,
+                        5,  # max_retries
+                        example_images,  # 传入少样本示例
+                        self._is_cancel_requested  # 取消检查
+                    )
+                    future_to_index[future] = index
+                    index += 1
+
+            submit_until_full()
+            self.logger_inst.info(f"已提交 {len(future_to_index)} 个识别任务", "OCR")
+
             # 收集结果（带超时控制）
             completed = 0
             from concurrent.futures import TimeoutError
-            
-            # 循环处理每个future
-            for future in as_completed(future_to_index):
-                idx = future_to_index[future]
-                file_stem, page_num = pages[idx][:2]
-                
-                try:
-                    # 设置单个页面的超时时间为180秒（比API timeout多60秒缓冲）
-                    result = future.result(timeout=180)
-                    
-                    # 检查结果
-                    if isinstance(result, tuple) and len(result) == 2:
-                        content = result[1]
-                        successful_results.append(result)
-                        self.logger_inst.debug(f"页面 {file_stem}-{page_num} 识别成功", "OCR")
-                    else:
-                        # 结果格式不对，添加失败结果
-                        error_result = ((file_stem, page_num), "识别失败：结果格式错误")
-                        successful_results.append(error_result)
-                        self.logger_inst.warning(f"页面 {file_stem}-{page_num} 结果格式错误，已记录失败", "OCR")
-                        
-                except TimeoutError:
-                    error_msg = f"识别超时（超过180秒）"
-                    error_result = ((file_stem, page_num), f"识别失败：{error_msg}")
-                    successful_results.append(error_result)
-                    self.logger_inst.error(f"页面 {file_stem}-{page_num} {error_msg}", "OCR")
-                    
-                except Exception as e:
-                    error_msg = f"识别异常：{str(e)}"
-                    error_result = ((file_stem, page_num), f"识别失败：{error_msg}")
-                    successful_results.append(error_result)
-                    self.logger_inst.error(f"页面 {file_stem}-{page_num} {error_msg}", "OCR")
-                
-                completed += 1
-                self.logger_inst.debug(f"已完成 {completed}/{total_pages} 个页面识别", "OCR")
 
-                # 更新进度（20-90%）
-                if progress_callback:
-                    ocr_percent = (completed / total_pages * 100) if total_pages > 0 else 0
-                    overall_percent = 20 + (ocr_percent * 0.7)
-                    progress_callback(completed, total_pages, f"OCR识别 ({completed}/{total_pages})", overall_percent)
+            while future_to_index:
+                done, _ = wait(future_to_index, return_when=FIRST_COMPLETED)
+
+                for future in done:
+                    idx = future_to_index.pop(future)
+                    file_stem, page_num = pages[idx][:2]
+
+                    try:
+                        # 设置单个页面的超时时间为180秒（比API timeout多60秒缓冲）
+                        result = future.result(timeout=180)
+
+                        # 检查结果
+                        if isinstance(result, tuple) and len(result) == 2:
+                            content = result[1]
+                            successful_results.append(result)
+                            self.logger_inst.debug(f"页面 {file_stem}-{page_num} 识别成功", "OCR")
+                        else:
+                            # 结果格式不对，添加失败结果
+                            error_result = ((file_stem, page_num), "识别失败：结果格式错误")
+                            successful_results.append(error_result)
+                            self.logger_inst.warning(f"页面 {file_stem}-{page_num} 结果格式错误，已记录失败", "OCR")
+
+                    except TimeoutError:
+                        error_msg = "识别超时（超过180秒）"
+                        error_result = ((file_stem, page_num), f"识别失败：{error_msg}")
+                        successful_results.append(error_result)
+                        self.logger_inst.error(f"页面 {file_stem}-{page_num} {error_msg}", "OCR")
+
+                    except Exception as e:
+                        error_msg = f"识别异常：{str(e)}"
+                        error_result = ((file_stem, page_num), f"识别失败：{error_msg}")
+                        successful_results.append(error_result)
+                        self.logger_inst.error(f"页面 {file_stem}-{page_num} {error_msg}", "OCR")
+
+                    completed += 1
+                    self.logger_inst.debug(f"已完成 {completed}/{total_pages} 个页面识别", "OCR")
+
+                    # 更新进度（20-90%）
+                    if progress_callback:
+                        ocr_percent = (completed / total_pages * 100) if total_pages > 0 else 0
+                        overall_percent = 20 + (ocr_percent * 0.7)
+                        progress_callback(completed, total_pages, f"OCR识别 ({completed}/{total_pages})", overall_percent)
+
+                if self._is_cancel_requested():
+                    self.logger_inst.warning(
+                        f"任务已取消，已处理 {completed}/{total_pages} 页，停止提交新任务",
+                        "OCR"
+                    )
+                    continue
+
+                submit_until_full()
 
         # 统计成功识别的页数
         total_success = len(successful_results)
@@ -270,79 +313,42 @@ class ProcessingService:
         all_contents = []
         total_files = len(file_pages)
         total_pages = sum(len(pages) for pages in file_pages.values())
-        
+
         self.logger_inst.debug(f"_merge_results: 总结果数={len(results)}, 分组后文件数={total_files}, 总页数={total_pages}", "Merge-Debug")
         for file_stem, pages in file_pages.items():
             self.logger_inst.debug(f"  文件 {file_stem}: {len(pages)} 页", "Merge-Debug")
-        
-        # 判断是否需要分开保存：单个文件大于 10 页 或者 总页数大于 200
-        should_split = False
-        if total_pages > 200:
-            should_split = True
-        else:
-            for file_stem, pages in file_pages.items():
-                if len(pages) > 10:
-                    should_split = True
-                    break
 
-        if should_split and save_to_file:
-            # 每个文件单独合并保存
-            for file_idx, (file_stem, pages) in enumerate(file_pages.items()):
-                try:
-                    # 按页码排序
-                    pages.sort(key=lambda x: x[0])
-                    # 保持 ((file_stem, page_num), content) 格式
-                    sorted_results = [((file_stem, page_num), content) for page_num, content in pages]
-                    # 合并结果
-                    markdown_content = self.result_merger.merge_contents_to_markdown(sorted_results)
-                    # 保存文件
+        # 每个文件独立合并（必要时保存）；如需“所有文件合并成一个文档”，
+        # 应在合并层新增显式模式，而不是复用这里的按文件循环。
+        for file_idx, (file_stem, pages) in enumerate(file_pages.items()):
+            try:
+                # 按页码排序
+                pages.sort(key=lambda x: x[0])
+                # 保持 ((file_stem, page_num), content) 格式
+                sorted_results = [((file_stem, page_num), content) for page_num, content in pages]
+                # 合并结果
+                markdown_content = self.result_merger.merge_contents_to_markdown(sorted_results)
+                all_contents.append(markdown_content)
+
+                if save_to_file:
                     output_path = self.result_merger.save_to_file(
                         content=markdown_content,
                         file_stem=file_stem,
                         output_dir=self.output_dir
                     )
                     output_results[file_stem] = (True, output_path)
-                    all_contents.append(markdown_content)
                     self.logger_inst.info(f"文件处理完成：{file_stem}", "FileProcess")
-                except Exception as e:
-                    self.logger_inst.error(f"保存文件失败 {file_stem}: {e}", "FileProcess")
-                    output_results[file_stem] = (False, None)
-                
-                # 更新进度（90-100%）
-                if progress_callback:
-                    percent = 90 + ((file_idx + 1) / total_files) * 10 if total_files > 0 else 100
-                    progress_callback(file_idx + 1, total_files, f"保存结果 ({file_idx + 1}/{total_files})", percent)
-        else:
-            # 所有文件一起合并
-            for file_idx, (file_stem, pages) in enumerate(file_pages.items()):
-                try:
-                    # 按页码排序
-                    pages.sort(key=lambda x: x[0])
-                    # 保持 ((file_stem, page_num), content) 格式
-                    sorted_results = [((file_stem, page_num), content) for page_num, content in pages]
-                    # 合并结果
-                    markdown_content = self.result_merger.merge_contents_to_markdown(sorted_results)
-                    all_contents.append(markdown_content)
-                    
-                    if save_to_file:
-                        # 所有文件一起合并，但是每个文件也要单独保存
-                        output_path = self.result_merger.save_to_file(
-                            content=markdown_content,
-                            file_stem=file_stem,
-                            output_dir=self.output_dir
-                        )
-                        output_results[file_stem] = (True, output_path)
-                    else:
-                        output_results[file_stem] = (True, None)
-                except Exception as e:
-                    self.logger_inst.error(f"合并失败 {file_stem}: {e}", "FileProcess")
-                    output_results[file_stem] = (False, None)
-                
-                # 更新进度（90-100%）
-                if progress_callback:
-                    action = "保存结果" if save_to_file else "合并结果"
-                    percent = 90 + ((file_idx + 1) / total_files) * 10 if total_files > 0 else 100
-                    progress_callback(file_idx + 1, total_files, f"{action} ({file_idx + 1}/{total_files})", percent)
+                else:
+                    output_results[file_stem] = (True, None)
+            except Exception as e:
+                self.logger_inst.error(f"合并失败 {file_stem}: {e}", "FileProcess")
+                output_results[file_stem] = (False, str(e))
+
+            # 更新进度（90-100%）
+            if progress_callback:
+                action = "保存结果" if save_to_file else "合并结果"
+                percent = 90 + ((file_idx + 1) / total_files) * 10 if total_files > 0 else 100
+                progress_callback(file_idx + 1, total_files, f"{action} ({file_idx + 1}/{total_files})", percent)
 
         # 合并所有内容
         total_content = "\n\n".join(all_contents)
@@ -352,7 +358,8 @@ class ProcessingService:
         self,
         file_path: str,
         prompt: str,
-        page_range_str: Optional[str] = None
+        page_range_str: Optional[str] = None,
+        example_images: Optional[List[Tuple[str, bytes]]] = None
     ) -> Tuple[bool, Optional[str], str]:
         """
         处理单个文件（使用核心方法）
@@ -361,12 +368,13 @@ class ProcessingService:
             file_path: 文件路径
             prompt: 提示词
             page_range_str: 页码范围
+            example_images: 少样本示例列表 [(示例文本, 示例图片数据), ...]
 
         Returns:
             (是否成功，输出文件路径，源文件名)
         """
         path_obj = Path(file_path)
-        
+
         if not path_obj.exists():
             self.logger_inst.warning(f"文件不存在：{file_path}", "FileProcess")
             return (False, None, path_obj.stem)
@@ -381,6 +389,11 @@ class ProcessingService:
             progress_callback=self._update_progress
         )
 
+        if self._is_cancel_requested():
+            self.logger_inst.warning(f"文件处理已取消：{path_obj.name}", "FileProcess")
+            self._update_status("任务已取消")
+            return (False, None, path_obj.stem)
+
         if not all_pages:
             self.logger_inst.warning(f"文件没有可处理的内容：{path_obj.name}", "FileProcess")
             return (False, None, path_obj.stem)
@@ -390,8 +403,14 @@ class ProcessingService:
         results = self._recognize_pages(
             all_pages,
             prompt,
-            progress_callback=self._update_progress
+            progress_callback=self._update_progress,
+            example_images=example_images
         )
+
+        if self._is_cancel_requested():
+            self.logger_inst.warning(f"文件处理已取消：{path_obj.name}", "FileProcess")
+            self._update_status("任务已取消")
+            return (False, None, path_obj.stem)
 
         # 3. 合并并保存（进度：90-100%）
         self._update_status("合并并保存结果...")
@@ -408,7 +427,7 @@ class ProcessingService:
                 self.logger_inst.info(f"处理完成：{output_path}", "FileProcess")
                 self._update_status("处理完成")
                 return (True, output_path, path_obj.stem)
-        
+
         return (False, None, path_obj.stem)
 
     def process_files(
@@ -440,6 +459,11 @@ class ProcessingService:
             progress_callback=self._update_progress
         )
 
+        if self._is_cancel_requested():
+            self.logger_inst.warning("批量处理已取消", "BatchProcess")
+            self._update_status("任务已取消")
+            return {}
+
         if not all_pages:
             self.logger_inst.warning("没有可处理的页面", "BatchProcess")
             return failed_files
@@ -455,6 +479,11 @@ class ProcessingService:
             progress_callback=self._update_progress,
             example_images=example_images
         )
+
+        if self._is_cancel_requested():
+            self.logger_inst.warning("批量处理已取消，不保存结果", "BatchProcess")
+            self._update_status("任务已取消")
+            return {}
 
         # 3. 合并并保存（进度：90-100%）
         self._update_status("合并并保存结果...")
@@ -503,6 +532,10 @@ class ProcessingService:
                 progress_callback=self._update_progress
             )
 
+            if self._is_cancel_requested():
+                self._update_status("任务已取消")
+                return (False, "任务已取消")
+
             if not all_pages:
                 return (False, "没有可处理的图像")
 
@@ -517,6 +550,10 @@ class ProcessingService:
                 progress_callback=self._update_progress,
                 example_images=example_images
             )
+
+            if self._is_cancel_requested():
+                self._update_status("任务已取消")
+                return (False, "任务已取消")
 
             # 3. 合并结果（进度：90-100%），不保存文件
             self._update_status("合并结果...")
@@ -545,20 +582,21 @@ class ProcessingService:
         pdf_scale: Optional[float] = None
     ):
         """更新配置"""
-        if api_key:
+        if api_key is not None:
             self.api_key = api_key
-        if base_url:
+        if base_url is not None:
             self.base_url = base_url
-        if model_name:
+        if model_name is not None:
             self.model_name = model_name
-        if output_dir:
+        if output_dir is not None:
             self.output_dir = output_dir
-        if max_workers:
+        if max_workers is not None:
             self.max_workers = max_workers
-        if pdf_scale:
+        if pdf_scale is not None:
             self.pdf_scale = pdf_scale
 
         # 重新初始化处理器
+        from .pdf_processor import PDFProcessor
         self.pdf_processor = PDFProcessor(scale_factor=self.pdf_scale)
         self.result_merger = ResultMerger(self.output_dir)
         self.ocr_engine = OCREngine(

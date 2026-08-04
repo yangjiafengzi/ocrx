@@ -41,19 +41,24 @@ class ExampleManagerUI:
     def _create_ui(self):
         """创建界面组件"""
         # 主框架
-        self.main_frame = ttk.LabelFrame(self.parent, text="少样本示例库", padding=5)
+        self.main_frame = ttk.LabelFrame(
+            self.parent,
+            text="少样本示例库",
+            style="Card.TLabelframe",
+            padding=8,
+        )
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 工具栏
-        toolbar = ttk.Frame(self.main_frame)
+        toolbar = ttk.Frame(self.main_frame, style="Card.TFrame")
         toolbar.pack(fill=tk.X, pady=5)
         
-        ttk.Button(toolbar, text="添加示例", command=self._on_add_example).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="删除选中", command=self._on_delete_selected).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="刷新列表", command=self.refresh_list).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="添加示例", style="Secondary.TButton", command=self._on_add_example).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="删除选中", style="Secondary.TButton", command=self._on_delete_selected).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="刷新列表", style="Secondary.TButton", command=self.refresh_list).pack(side=tk.LEFT, padx=2)
         
         # 统计信息
-        self.stats_label = ttk.Label(toolbar, text="共 0 个示例")
+        self.stats_label = ttk.Label(toolbar, text="共 0 个示例", style="Section.TLabel")
         self.stats_label.pack(side=tk.RIGHT, padx=5)
         
         # 列表面板
@@ -93,7 +98,11 @@ class ExampleManagerUI:
         
         # 底部提示
         hint_text = "提示：点击复选框选择要在识别时使用的示例（建议1-3个）"
-        ttk.Label(self.main_frame, text=hint_text, foreground="gray", font=("微软雅黑", 8)).pack(anchor='w', pady=5)
+        ttk.Label(
+            self.main_frame,
+            text=hint_text,
+            style="Muted.TLabel",
+        ).pack(anchor='w', pady=5)
     
     def _on_tree_click(self, event):
         """处理Treeview点击事件"""

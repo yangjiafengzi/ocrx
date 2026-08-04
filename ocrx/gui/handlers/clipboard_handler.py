@@ -30,18 +30,21 @@ class ClipboardHandler(BaseHandler):
         ttk.Button(
             control_frame, 
             text="复制选中项", 
+            style="Secondary.TButton",
             command=self.copy_selected
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             control_frame, 
             text="清空历史", 
+            style="Secondary.TButton",
             command=self.clear_history
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(
             control_frame, 
             text="刷新", 
+            style="Secondary.TButton",
             command=self.refresh_history
         ).pack(side=tk.LEFT, padx=5)
 

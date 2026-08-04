@@ -4,7 +4,7 @@
 #define MyAppName "OCRX"
 #define MyAppVersion "2.1.0"
 #define MyAppPublisher "OCRX Team"
-#define MyAppURL "https://github.com/yourusername/ocrx"
+#define MyAppURL "https://github.com/yangjiafengzi/ocrx"
 #define MyAppExeName "OCRX-2.1.0.exe"
 
 [Setup]
