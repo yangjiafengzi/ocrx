@@ -10,7 +10,13 @@ from typing import Callable, List, Optional
 from pathlib import Path
 
 from ..example_library import ExampleLibrary, Example
-from .theme import BORDER, TEXT, bind_scrollbar_paging, bind_tree_scroll
+from .theme import (
+    BORDER,
+    TEXT,
+    attach_scrollbar,
+    bind_scrollbar_paging,
+    bind_tree_scroll,
+)
 
 
 class ExampleManagerUI:
@@ -91,7 +97,8 @@ class ExampleManagerUI:
         # 滚动条
         scrollbar_y = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar_x = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        attach_scrollbar(scrollbar_y, self.tree, orient="vertical", manager="grid")
+        attach_scrollbar(scrollbar_x, self.tree, orient="horizontal", manager="grid")
         bind_tree_scroll(self.tree, xscrollbar=scrollbar_x)
         bind_scrollbar_paging(scrollbar_y)
         bind_scrollbar_paging(scrollbar_x)

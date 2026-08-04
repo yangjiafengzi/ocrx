@@ -192,10 +192,10 @@ class MainWindow:
             command=self.config_canvas.yview,
             style="Page.Vertical.TScrollbar",
         )
-        self.config_canvas.configure(yscrollcommand=self.config_scrollbar.set)
         self.config_canvas.grid(row=0, column=0, sticky="nsew")
         self.config_scrollbar.grid(row=0, column=1, sticky="ns")
-        from .theme import bind_scrollbar_paging
+        from .theme import attach_scrollbar, bind_scrollbar_paging
+        attach_scrollbar(self.config_scrollbar, self.config_canvas, orient="vertical", manager="grid")
         bind_scrollbar_paging(self.config_scrollbar)
 
         inner = ttk.Frame(self.config_canvas)
@@ -347,24 +347,10 @@ class MainWindow:
         """画布宽度变化时，让内容区跟随宽度。"""
         if hasattr(self, "_config_window_id"):
             self.config_canvas.itemconfigure(self._config_window_id, width=event.width)
-        self._update_config_scrollbar_visibility()
 
     def _on_config_inner_configure(self, event):
         """内容尺寸变化时更新滚动范围。"""
         self.config_canvas.configure(scrollregion=self.config_canvas.bbox("all"))
-        self._update_config_scrollbar_visibility()
-
-    def _update_config_scrollbar_visibility(self):
-        """内容未超出可视区时隐藏滚动条，避免常驻一条空轨道。"""
-        try:
-            bbox = self.config_canvas.bbox("all")
-            view_h = self.config_canvas.winfo_height()
-            if bbox and view_h > 0 and bbox[3] <= view_h + 1:
-                self.config_scrollbar.grid_remove()
-            else:
-                self.config_scrollbar.grid()
-        except tk.TclError:
-            pass
 
     def _bind_mousewheel(self, widget):
         """递归绑定鼠标滚轮，保证滚动条在配置页任意位置可用。"""

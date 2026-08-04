@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional
 
-from ..theme import bind_scrollbar_paging, bind_tree_scroll
+from ..theme import attach_scrollbar, bind_scrollbar_paging, bind_tree_scroll
 from .base_handler import BaseHandler
 
 
@@ -72,7 +72,7 @@ class ClipboardHandler(BaseHandler):
         # 滚动条
         scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar.grid(row=1, column=1, sticky='ns')
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        attach_scrollbar(scrollbar, self.tree, orient="vertical", manager="grid")
         bind_tree_scroll(self.tree)
         bind_scrollbar_paging(scrollbar)
         

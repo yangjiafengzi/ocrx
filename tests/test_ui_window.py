@@ -180,19 +180,12 @@ def test_config_page_scrollable_when_window_small(ui_app):
     ui_app.root.update_idletasks()
     assert canvas.yview()[0] < after[0]
 
-    # 模拟画布高度足够大：内容放得下时滚动条自动隐藏
-    ui_app.config_canvas.winfo_height = lambda: 2000
-    ui_app._update_config_scrollbar_visibility()
-    assert not ui_app.config_scrollbar.winfo_ismapped(), "内容放得下时滚动条应隐藏"
-
-
 def test_all_text_scrollbars_unified(ui_app):
     """回归测试：提示词/日志/结果页的滚动条都应是统一的 ttk 细窄样式。"""
     for widget in (ui_app.prompt_text, ui_app.log_text, ui_app.result_text):
         assert isinstance(widget.vbar, ttk.Scrollbar), (
             f"{widget} 的滚动条未统一为 ttk 样式"
         )
-        assert widget.vbar.winfo_manager() == "pack", "文本框滚动条应常驻显示"
     # 日志页为深色控制台，滚动条应使用深色适配样式
     assert str(ui_app.log_text.vbar.cget("style")) == "Dark.Vertical.TScrollbar"
     assert str(ui_app.prompt_text.vbar.cget("style")) == "Vertical.TScrollbar"
@@ -421,3 +414,65 @@ def test_example_tree_wheel_and_horizontal_drag(ui_app, sample_png):
     _drag_thumb_h(hbar, distance=40)
     after = tree.xview()
     assert after != before, "示例库横向滑块拖不动"
+
+
+def test_text_scrollbar_autohide_when_fits(ui_app):
+    """回归测试：文本框内容放得下时滚动条隐藏，溢出时出现。"""
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "识别结果":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    assert not ui_app.result_text.vbar.winfo_ismapped(), "短内容不应显示滚动条"
+
+    ui_app.result_text.config(state="normal")
+    for i in range(80):
+        ui_app.result_text.insert("end", f"结果行 {i}\n")
+    ui_app.result_text.config(state="disabled")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    assert ui_app.result_text.vbar.winfo_ismapped(), "长内容应显示滚动条"
+
+
+def test_log_many_lines_keeps_visible_thumb(ui_app):
+    """回归测试：日志行极多时滑块不能细到消失（应有最小尺寸）。"""
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "运行日志":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.log_text.config(state="normal")
+    for i in range(2000):
+        ui_app.log_text.insert("end", f"日志行 {i}\n")
+    ui_app.log_text.config(state="disabled")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    vbar = ui_app.log_text.vbar
+    assert vbar.winfo_ismapped(), "大量日志时应显示滚动条"
+    first, last = (float(x) for x in vbar.get())
+    assert last - first >= 0.05, "滑块不应细到消失"
+
+
+def test_trees_hide_when_content_fits(ui_app, sample_png):
+    """回归测试：示例库内容少且放得下时，横纵滚动条都应隐藏。"""
+    for i in range(3):
+        ui_app.example_library.add_example(
+            str(sample_png), f"示例 {i} 文本", f"标签 {i}"
+        )
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.example_manager_ui.refresh_list()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    tree = ui_app.example_manager_ui.tree
+    scrollbars = [
+        w for w in tree.master.winfo_children() if isinstance(w, ttk.Scrollbar)
+    ]
+    assert scrollbars, "应能找到示例库滚动条"
+    assert all(not w.winfo_ismapped() for w in scrollbars), (
+        "内容放得下时不应显示满条假滑块"
+    )

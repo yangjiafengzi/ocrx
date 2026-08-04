@@ -479,3 +479,65 @@ def test_main_window_example_selection_callback(tmp_path):
     mw._on_example_selection_change(["id1", "id2"])
     assert mw.selected_example_ids == ["id1", "id2"]
     assert logs
+
+
+def test_attach_scrollbar_hides_and_min_thumb():
+    """回归测试：滚动条按需显示 + 内容极多时滑块保持最小尺寸。"""
+    from ocrx.gui.theme import attach_scrollbar
+
+    class FakeScrollbar:
+        def __init__(self):
+            self.mapped = True
+            self.value = (0.0, 1.0)
+            self.grid_opts = {"row": 0, "column": 1, "sticky": "ns"}
+
+        def winfo_manager(self):
+            return "grid"
+
+        def winfo_ismapped(self):
+            return self.mapped
+
+        def winfo_height(self):
+            return 200
+
+        def grid_info(self):
+            return self.grid_opts
+
+        def grid(self, **kwargs):
+            self.mapped = True
+
+        def grid_remove(self):
+            self.mapped = False
+
+        def set(self, first, last):
+            self.value = (float(first), float(last))
+
+        def get(self):
+            return self.value
+
+    class FakeTarget:
+        def __init__(self):
+            self.view = (0.0, 0.2)
+
+        def configure(self, **kwargs):
+            self.yscrollcommand = kwargs.get("yscrollcommand")
+
+        def yview(self):
+            return self.view
+
+    sb = FakeScrollbar()
+    target = FakeTarget()
+    setter = attach_scrollbar(sb, target, orient="vertical", manager="grid")
+
+    # 有溢出 → 显示
+    assert sb.mapped is True
+    # 内容放得下 → 隐藏，不显示满条假滑块
+    target.view = (0.0, 1.0)
+    setter(0.0, 1.0)
+    assert sb.mapped is False
+    # 内容极多 → 显示且滑块有最小尺寸
+    target.view = (0.0, 0.005)
+    setter(0.0, 0.005)
+    assert sb.mapped is True
+    first, last = sb.get()
+    assert last - first >= 40 / 200 - 1e-9, "滑块不应细到消失"
