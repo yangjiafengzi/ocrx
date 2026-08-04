@@ -192,6 +192,7 @@ def test_all_text_scrollbars_unified(ui_app):
         assert isinstance(widget.vbar, ttk.Scrollbar), (
             f"{widget} 的滚动条未统一为 ttk 样式"
         )
+        assert widget.vbar.winfo_manager() == "pack", "文本框滚动条应常驻显示"
     # 日志页为深色控制台，滚动条应使用深色适配样式
     assert str(ui_app.log_text.vbar.cget("style")) == "Dark.Vertical.TScrollbar"
     assert str(ui_app.prompt_text.vbar.cget("style")) == "Vertical.TScrollbar"
@@ -325,18 +326,98 @@ def test_tree_scrollbar_thumb_draggable(ui_app):
     assert after != before, "剪贴板表格滚动条滑块拖不动"
 
 
-def test_visible_scrollbars_always_have_overflow(ui_app):
-    """可见的滚动条必须真的需要滚动（不允许出现满条假滑块）。"""
+def test_config_scrollbar_never_full_when_visible(ui_app):
+    """配置页滚动条可见时必须有真实溢出（不出现满条假滑块）。"""
     ui_app.root.minsize(300, 250)
     ui_app.root.geometry("900x380")
     ui_app.root.update_idletasks()
     ui_app.root.update()
 
+    if ui_app.config_scrollbar.winfo_ismapped():
+        first, last = (float(x) for x in ui_app.config_scrollbar.get())
+        assert last < 1.0 - 1e-6, "配置页滚动条内容放得下却显示满条滑块"
+
+
+def _drag_thumb_h(vbar, distance=40, steps=8):
+    """模拟鼠标横向拖拽滚动条滑块。"""
+    root = vbar.winfo_toplevel()
+    root.update_idletasks()
+    root.update()
+    first, last = (float(x) for x in vbar.get())
+    width = vbar.winfo_width()
+    cy = vbar.winfo_height() // 2
+    tx = int(first * width)
+    tw = max(10, int((last - first) * width))
+    vbar.event_generate("<ButtonPress-1>", x=tx + tw // 2, y=cy)
+    for i in range(1, steps + 1):
+        vbar.event_generate(
+            "<B1-Motion>",
+            x=tx + tw // 2 + i * (distance // steps),
+            y=cy,
+        )
+    vbar.event_generate("<ButtonRelease-1>", x=tx + tw // 2 + distance, y=cy)
+    root.update_idletasks()
+    root.update()
+
+
+def test_scrollbar_trough_click_pages(ui_app):
+    """回归测试：点击滚动条滑轨（滑块下方）应能翻页。"""
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    vbar = ui_app.config_scrollbar
+    assert vbar.winfo_ismapped()
+    first, last = (float(x) for x in vbar.get())
+    h = vbar.winfo_height()
+    cx = vbar.winfo_width() // 2
+    below = min(h - 2, int(last * h) + 20)
+    before = ui_app.config_canvas.yview()
+    vbar.event_generate("<Button-1>", x=cx, y=below)
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    after = ui_app.config_canvas.yview()
+    assert after[0] > before[0], "点击滑轨下方没有翻页"
+
+
+def test_example_tree_wheel_and_horizontal_drag(ui_app, sample_png):
+    """回归测试：示例库表格滚轮可滚、横向滑块可拖。"""
+    for i in range(12):
+        ui_app.example_library.add_example(
+            str(sample_png), f"示例文本 {i} " * 8, f"标签 {i}"
+        )
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.example_manager_ui.refresh_list()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    tree = ui_app.example_manager_ui.tree
+    before = tree.yview()
+    tree.event_generate("<MouseWheel>", delta=-120)
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    after = tree.yview()
+    assert after != before, "示例库表格滚轮无效"
+
+    # 缩小宽度制造横向溢出
+    ui_app.root.geometry("520x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
     scrollbars = [
-        ("配置页", ui_app.config_scrollbar, ui_app.config_canvas.yview),
-        ("提示词", ui_app.prompt_text.vbar, ui_app.prompt_text.yview),
+        w for w in tree.master.winfo_children() if isinstance(w, ttk.Scrollbar)
     ]
-    for name, vbar, view in scrollbars:
-        if vbar.winfo_ismapped():
-            first, last = (float(x) for x in vbar.get())
-            assert last < 1.0 - 1e-6, f"{name} 滚动条内容放得下却显示满条滑块"
+    hbar = next(w for w in scrollbars if str(w.cget("orient")) == "horizontal")
+    first, last = (float(x) for x in tree.xview())
+    assert last < 1.0 - 1e-6, "示例库内容应横向溢出"
+    before = tree.xview()
+    _drag_thumb_h(hbar, distance=40)
+    after = tree.xview()
+    assert after != before, "示例库横向滑块拖不动"

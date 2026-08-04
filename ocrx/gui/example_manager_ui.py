@@ -10,7 +10,7 @@ from typing import Callable, List, Optional
 from pathlib import Path
 
 from ..example_library import ExampleLibrary, Example
-from .theme import BORDER, TEXT
+from .theme import BORDER, TEXT, bind_scrollbar_paging, bind_tree_scroll
 
 
 class ExampleManagerUI:
@@ -68,7 +68,13 @@ class ExampleManagerUI:
         
         # 创建Treeview
         columns = ('select', 'id', 'description', 'text_preview')
-        self.tree = ttk.Treeview(list_frame, columns=columns, show='headings', selectmode='none')
+        self.tree = ttk.Treeview(
+            list_frame,
+            columns=columns,
+            show='headings',
+            selectmode='none',
+            height=8,
+        )
         
         # 定义列
         self.tree.heading('select', text='选择')
@@ -76,15 +82,19 @@ class ExampleManagerUI:
         self.tree.heading('description', text='描述')
         self.tree.heading('text_preview', text='文本预览')
         
-        self.tree.column('select', width=50, anchor='center')
-        self.tree.column('id', width=100)
-        self.tree.column('description', width=150)
-        self.tree.column('text_preview', width=300)
+        # 固定列宽：窗口变窄时产生真实横向溢出，横向滚动条才有意义
+        self.tree.column('select', width=50, anchor='center', stretch=False)
+        self.tree.column('id', width=100, stretch=False)
+        self.tree.column('description', width=150, stretch=False)
+        self.tree.column('text_preview', width=300, stretch=False)
         
         # 滚动条
         scrollbar_y = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar_x = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
         self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        bind_tree_scroll(self.tree, xscrollbar=scrollbar_x)
+        bind_scrollbar_paging(scrollbar_y)
+        bind_scrollbar_paging(scrollbar_x)
         
         # 布局
         self.tree.grid(row=0, column=0, sticky='nsew')

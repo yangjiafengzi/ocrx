@@ -7,6 +7,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional
+
+from ..theme import bind_scrollbar_paging, bind_tree_scroll
 from .base_handler import BaseHandler
 
 
@@ -50,7 +52,7 @@ class ClipboardHandler(BaseHandler):
 
         # 历史记录列表
         columns = ('时间', '长度', '状态', '方法', '预览')
-        self.tree = ttk.Treeview(parent, columns=columns, show='headings', height=20)
+        self.tree = ttk.Treeview(parent, columns=columns, show='headings', height=8)
         
         # 设置列标题和宽度
         self.tree.heading('时间', text='时间')
@@ -71,6 +73,8 @@ class ClipboardHandler(BaseHandler):
         scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar.grid(row=1, column=1, sticky='ns')
         self.tree.configure(yscrollcommand=scrollbar.set)
+        bind_tree_scroll(self.tree)
+        bind_scrollbar_paging(scrollbar)
         
         # 绑定双击事件
         self.tree.bind('<Double-1>', self.show_detail)

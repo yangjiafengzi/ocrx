@@ -332,10 +332,7 @@ def apply_themed_scrollbar(
     text_widget: scrolledtext.ScrolledText,
     scrollbar_style: str = "Vertical.TScrollbar",
 ) -> ttk.Scrollbar:
-    """把 ScrolledText 内置的原生滚动条替换为统一风格的 ttk 滚动条。
-
-    滚动条按需显示：内容未超出可视区时隐藏，超出时自动出现。
-    """
+    """把 ScrolledText 内置的原生滚动条替换为统一风格的 ttk 滚动条（常驻显示）。"""
     frame = text_widget.frame
     try:
         # 让滚动条所在的内层 Frame 与文本框背景一致，避免轨道周围露出浅色边框
@@ -353,20 +350,9 @@ def apply_themed_scrollbar(
         style=scrollbar_style,
     )
     text_widget.vbar = vbar
-
-    def _sync_scrollbar(*args):
-        vbar.set(*args)
-        try:
-            first, last = float(args[0]), float(args[1])
-            if first <= 0.0 and last >= 1.0:
-                vbar.pack_forget()
-            else:
-                vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        except (ValueError, tk.TclError):
-            pass
-
-    text_widget.configure(yscrollcommand=_sync_scrollbar)
+    text_widget.configure(yscrollcommand=vbar.set)
     vbar.pack(side=tk.RIGHT, fill=tk.Y)
+    bind_scrollbar_paging(vbar)
     return vbar
 
 
@@ -379,3 +365,57 @@ def themed_scrolled_text(
     widget = scrolledtext.ScrolledText(parent, **kwargs)
     apply_themed_scrollbar(widget, scrollbar_style)
     return widget
+
+
+def bind_scrollbar_paging(scrollbar: ttk.Scrollbar):
+    """点击滑轨翻页、滚轮在滚动条上滚动。"""
+
+    def _on_click(event):
+        try:
+            element = scrollbar.identify(event.x, event.y)
+        except tk.TclError:
+            return
+        if element != "trough":
+            return
+        command = scrollbar.cget("command")
+        if not command:
+            return
+        orient = str(scrollbar.cget("orient"))
+        size = (
+            scrollbar.winfo_height()
+            if orient == "vertical"
+            else scrollbar.winfo_width()
+        )
+        pos = event.y if orient == "vertical" else event.x
+        first, last = (float(x) for x in scrollbar.get())
+        thumb_start = first * size
+        thumb_end = last * size
+        if pos < thumb_start:
+            command("scroll", -1, "pages")
+        elif pos > thumb_end:
+            command("scroll", 1, "pages")
+
+    def _on_wheel(event):
+        command = scrollbar.cget("command")
+        if command:
+            command("scroll", -1 if event.delta > 0 else 1, "units")
+
+    scrollbar.bind("<Button-1>", _on_click, add="+")
+    scrollbar.bind("<MouseWheel>", _on_wheel, add="+")
+
+
+def bind_tree_scroll(tree: ttk.Treeview, xscrollbar=None):
+    """让表格支持滚轮滚动（纵向 + Shift 横向）。"""
+
+    def _on_wheel(event):
+        tree.yview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
+
+    def _on_shift_wheel(event):
+        tree.xview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
+
+    tree.bind("<MouseWheel>", _on_wheel, add="+")
+    tree.bind("<Shift-MouseWheel>", _on_shift_wheel, add="+")
+    if xscrollbar is not None:
+        xscrollbar.bind("<MouseWheel>", _on_shift_wheel, add="+")

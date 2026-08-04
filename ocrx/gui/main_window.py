@@ -195,6 +195,8 @@ class MainWindow:
         self.config_canvas.configure(yscrollcommand=self.config_scrollbar.set)
         self.config_canvas.grid(row=0, column=0, sticky="nsew")
         self.config_scrollbar.grid(row=0, column=1, sticky="ns")
+        from .theme import bind_scrollbar_paging
+        bind_scrollbar_paging(self.config_scrollbar)
 
         inner = ttk.Frame(self.config_canvas)
         self._config_window_id = self.config_canvas.create_window(

@@ -94,6 +94,7 @@ def main():
     snap("ui_main.png", 0)
     snap("ui_examples.png", 1)
     snap("ui_log.png", 2)
+    snap("ui_clipboard.png", 3)
     snap("ui_result.png", 4)
 
     app.logger.close()
