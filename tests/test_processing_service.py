@@ -48,10 +48,12 @@ class FakeOCREngine:
         self.max_workers = kwargs.get("max_workers", 10)
         self.calls = 0
         self.last_examples = None
+        self.last_max_retries = None
 
     def process_single_image(self, prompt, identifier, img_data, max_retries=5, example_images=None, cancel_check=None):
         self.calls += 1
         self.last_examples = example_images
+        self.last_max_retries = max_retries
         return (identifier, f"内容-{identifier[1]}")
 
 
@@ -92,6 +94,7 @@ def test_recognize_pages(service):
     assert len(results) == 3
     assert service.ocr_engine.calls == 3
     assert service.ocr_engine.last_examples == [("示例", b"img")]
+    assert service.ocr_engine.last_max_retries == 3, "业务重试次数应限制为 3"
     assert {r[1] for r in results} == {"内容-1", "内容-2", "内容-1"}
 
 

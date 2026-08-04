@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ocrx.ocr_engine as oe_mod
 import ocrx.retry_utils as ru
 from ocrx.ocr_engine import OCREngine
 
@@ -31,7 +32,7 @@ def test_process_single_image_success():
     engine.client.chat_completions_create.return_value = fake_response("识别文本")
     result = engine.process_single_image("提示词", ("file", 1), b"img")
     assert result == (("file", 1), "识别文本")
-    assert engine.client.chat_completions_create.call_args.kwargs["timeout"] == 120
+    assert engine.client.chat_completions_create.call_args.kwargs["timeout"] == 60
 
 
 def test_process_single_image_messages_structure():
@@ -125,3 +126,53 @@ def test_update_config_clears_values(monkeypatch):
     assert engine.base_url == ""
     assert engine.model_name == ""
     assert engine.max_workers == 0
+
+
+def test_process_single_image_refusal_finish_reason(monkeypatch):
+    """回归测试：安全策略拒绝（content_filter）不应反复重试。"""
+    monkeypatch.setattr(ru.time, "sleep", lambda s: None)
+    engine = make_engine()
+    engine.client.chat_completions_create.return_value = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                finish_reason="content_filter",
+                message=SimpleNamespace(
+                    content="I'm sorry, I can't help with this.",
+                    refusal="",
+                ),
+            )
+        ]
+    )
+    identifier, content = engine.process_single_image("p", ("f", 1), b"img", max_retries=3)
+    assert identifier == ("f", 1)
+    assert "安全策略" in content
+    assert engine.client.chat_completions_create.call_count == 1
+
+
+def test_process_single_image_refusal_phrase(monkeypatch):
+    """回归测试：模型以“拒绝回答”类文本返回时也不应反复重试。"""
+    monkeypatch.setattr(ru.time, "sleep", lambda s: None)
+    engine = make_engine()
+    engine.client.chat_completions_create.return_value = fake_response("抱歉，我不能回答这个问题")
+    identifier, content = engine.process_single_image("p", ("f", 1), b"img", max_retries=3)
+    assert identifier == ("f", 1)
+    assert "安全策略" in content
+    assert engine.client.chat_completions_create.call_count == 1
+
+
+def test_process_single_image_deadline(monkeypatch):
+    """回归测试：单页处理超过时限应立即放弃，而不是无限等待。"""
+    clock = {"t": 0.0}
+
+    def fake_monotonic():
+        clock["t"] += 1.0  # 每次读取都前进 1 秒
+        return clock["t"]
+
+    monkeypatch.setattr(oe_mod.time, "monotonic", fake_monotonic)
+    engine = make_engine()
+    identifier, content = engine.process_single_image(
+        "p", ("f", 1), b"img", deadline_seconds=0
+    )
+    assert identifier == ("f", 1)
+    assert "超时" in content
+    engine.client.chat_completions_create.assert_not_called()

@@ -13,12 +13,32 @@ class OperationCancelledError(Exception):
     """任务被用户取消时抛出的异常。"""
 
 
+class ContentRefusedError(Exception):
+    """模型因安全策略拒绝返回内容时抛出的异常（重试没有意义）。"""
+
+
+def _sleep_interruptible(delay: float, cancel_check=None):
+    """分段睡眠，取消时立即返回并抛出取消异常。"""
+    if cancel_check is None:
+        time.sleep(delay)
+        return
+    end = time.monotonic() + delay
+    while True:
+        if cancel_check and cancel_check():
+            raise OperationCancelledError("任务已取消")
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.2, remaining))
+
+
 def retry_with_backoff(
     max_retries: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
     exceptions: Tuple[type, ...] = (Exception,),
-    on_retry: Optional[Callable] = None
+    on_retry: Optional[Callable] = None,
+    cancel_check: Optional[Callable[[], bool]] = None
 ):
     """
     重试装饰器，使用等差数列延迟机制
@@ -54,7 +74,7 @@ def retry_with_backoff(
                     if on_retry:
                         on_retry(attempt + 1, delay, e)
 
-                    time.sleep(delay)
+                    _sleep_interruptible(delay, cancel_check)
 
             # 不应该到达这里
             raise last_exception if last_exception else RuntimeError("未知错误")
@@ -69,7 +89,8 @@ def retry_operation(
     base_delay: float = 1.0,
     max_delay: float = 60.0,
     exceptions: Tuple[type, ...] = (Exception,),
-    on_retry: Optional[Callable] = None
+    on_retry: Optional[Callable] = None,
+    cancel_check: Optional[Callable[[], bool]] = None
 ) -> Any:
     """
     对单个操作进行重试
@@ -88,6 +109,8 @@ def retry_operation(
     last_exception = None
 
     for attempt in range(max_retries + 1):
+        if cancel_check and cancel_check():
+            raise OperationCancelledError("任务已取消")
         try:
             return operation()
         except exceptions as e:
@@ -101,6 +124,6 @@ def retry_operation(
             if on_retry:
                 on_retry(attempt + 1, delay, e)
 
-            time.sleep(delay)
+            _sleep_interruptible(delay, cancel_check)
 
     raise last_exception if last_exception else RuntimeError("未知错误")

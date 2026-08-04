@@ -19,7 +19,7 @@ class OCRClient:
         self,
         api_key: str,
         base_url: str,
-        max_retries: int = 3,
+        max_retries: int = 2,
         retry_delay: int = 1,
         logger: Optional[StructuredLogger] = None
     ):

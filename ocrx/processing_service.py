@@ -212,7 +212,7 @@ class ProcessingService:
                         prompt,
                         identifier,
                         img_data,
-                        5,  # max_retries
+                        3,  # max_retries
                         example_images,  # 传入少样本示例
                         self._is_cancel_requested  # 取消检查
                     )
