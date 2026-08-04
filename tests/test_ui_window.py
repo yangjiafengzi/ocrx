@@ -137,7 +137,7 @@ def test_example_library_tab_refresh(ui_app):
     # 切换到少样本示例库页，确认列表和统计标签存在
     for i, tab_id in enumerate(ui_app.notebook.tabs()):
         if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
-            ui_app.notebook.select(i)
+            ui_app.notebook.select(tab_id)
             break
     ui_app.root.update_idletasks()
     assert ui_app.example_manager_ui.stats_label.cget("text") == "共 0 个示例"
@@ -217,3 +217,126 @@ def test_bottom_buttons_visible_after_shrink(ui_app):
     y = bar.winfo_rooty() - ui_app.root.winfo_rooty()
     assert y >= 0, "底部按钮栏顶部不应超出窗口"
     assert y + bar.winfo_height() <= win_h + 2, "底部按钮栏不应超出窗口底部"
+
+
+def _drag_thumb(vbar, distance=None, steps=12):
+    """模拟鼠标拖拽滚动条滑块。"""
+    root = vbar.winfo_toplevel()
+    root.update_idletasks()
+    root.update()
+    first, last = (float(x) for x in vbar.get())
+    if distance is None:
+        # 已在底部时向上拖，否则向下拖（日志页会自动滚到底部）
+        distance = -60 if last >= 1.0 - 1e-6 else 60
+    height = vbar.winfo_height()
+    cx = vbar.winfo_width() // 2
+    ty = int(first * height)
+    th = max(10, int((last - first) * height))
+    vbar.event_generate("<ButtonPress-1>", x=cx, y=ty + th // 2)
+    for i in range(1, steps + 1):
+        vbar.event_generate(
+            "<B1-Motion>",
+            x=cx,
+            y=ty + th // 2 + i * (distance // steps),
+        )
+    vbar.event_generate("<ButtonRelease-1>", x=cx, y=ty + th // 2 + distance)
+    root.update_idletasks()
+    root.update()
+
+
+def test_config_scrollbar_thumb_draggable(ui_app):
+    """回归测试：配置页滚动条滑块必须能拖拽滚动。"""
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    vbar = ui_app.config_scrollbar
+    assert vbar.winfo_ismapped()
+    before = ui_app.config_canvas.yview()
+    _drag_thumb(vbar, distance=80)
+    after = ui_app.config_canvas.yview()
+    assert after != before, "配置页滚动条滑块拖不动"
+
+
+def test_text_scrollbar_thumb_draggable(ui_app):
+    """回归测试：文本框滚动条滑块必须能拖拽滚动。"""
+    vbar = ui_app.prompt_text.vbar
+    assert vbar.winfo_ismapped(), "提示词内容较长，滚动条应可见"
+    before = ui_app.prompt_text.yview()
+    _drag_thumb(vbar, distance=40)
+    after = ui_app.prompt_text.yview()
+    assert after != before, "提示词滚动条滑块拖不动"
+
+
+def test_dark_log_scrollbar_thumb_draggable(ui_app):
+    """回归测试：深色日志页滚动条滑块必须能拖拽滚动。"""
+    # 直接填充日志文本，避免日志自动滚动到底部干扰拖拽验证
+    ui_app.log_text.config(state="normal")
+    for i in range(60):
+        ui_app.log_text.insert("end", f"拖拽测试日志行 {i}\n")
+    ui_app.log_text.config(state="disabled")
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "运行日志":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    vbar = ui_app.log_text.vbar
+    assert vbar.winfo_ismapped(), "日志内容较长，滚动条应可见"
+    before = ui_app.log_text.yview()
+    _drag_thumb(vbar, distance=40)
+    after = ui_app.log_text.yview()
+    assert after != before, "日志滚动条滑块拖不动"
+
+
+def test_tree_scrollbar_thumb_draggable(ui_app):
+    """回归测试：剪贴板历史表格滚动条滑块必须能拖拽滚动。"""
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    for i in range(30):
+        ui_app.clipboard_history.add_record(f"记录 {i}", success=True, method="tkinter")
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "剪贴板历史":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    handler = ui_app.clipboard_handler
+    handler.refresh_history()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+    vbar = handler.tree.master.winfo_children()
+    scrollbar = next(w for w in vbar if isinstance(w, ttk.Scrollbar))
+    assert scrollbar.winfo_ismapped()
+    first, last = (float(x) for x in scrollbar.get())
+    assert last < 1.0 - 1e-6, "剪贴板表格内容应超出可视区"
+    before = handler.tree.yview()
+    _drag_thumb(scrollbar)
+    after = handler.tree.yview()
+    assert after != before, "剪贴板表格滚动条滑块拖不动"
+
+
+def test_visible_scrollbars_always_have_overflow(ui_app):
+    """可见的滚动条必须真的需要滚动（不允许出现满条假滑块）。"""
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    scrollbars = [
+        ("配置页", ui_app.config_scrollbar, ui_app.config_canvas.yview),
+        ("提示词", ui_app.prompt_text.vbar, ui_app.prompt_text.yview),
+    ]
+    for name, vbar, view in scrollbars:
+        if vbar.winfo_ismapped():
+            first, last = (float(x) for x in vbar.get())
+            assert last < 1.0 - 1e-6, f"{name} 滚动条内容放得下却显示满条滑块"
