@@ -36,26 +36,26 @@ class ProgressHandler(BaseHandler):
         progress_frame.grid_columnconfigure(1, weight=1)
 
         # 当前阶段
-        ttk.Label(progress_frame, text="当前阶段:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(progress_frame, text="当前阶段:").grid(row=0, column=0, sticky="w", padx=5, pady=1)
         self.current_task_label = ttk.Label(progress_frame, text="等待开始...", foreground="gray")
-        self.current_task_label.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+        self.current_task_label.grid(row=0, column=1, sticky="w", padx=5, pady=1)
 
         # 整体进度
-        ttk.Label(progress_frame, text="整体进度:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(progress_frame, text="整体进度:").grid(row=1, column=0, sticky="w", padx=5, pady=1)
         self.progress_var = tk.StringVar(value="0%")
         self.progress_label = ttk.Label(progress_frame, textvariable=self.progress_var, foreground="blue")
-        self.progress_label.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+        self.progress_label.grid(row=1, column=1, sticky="w", padx=5, pady=1)
 
         # 进度条
         self.progress_bar = ttk.Progressbar(progress_frame, mode='determinate')
-        self.progress_bar.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        self.progress_bar.grid(row=2, column=0, columnspan=2, padx=5, pady=3, sticky="ew")
         self.progress_bar['value'] = 0
 
         # 详细信息
-        ttk.Label(progress_frame, text="详细信息:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(progress_frame, text="详细信息:").grid(row=3, column=0, sticky="w", padx=5, pady=1)
         self.detail_progress_var = tk.StringVar(value="等待开始...")
         self.detail_progress_label = ttk.Label(progress_frame, textvariable=self.detail_progress_var, foreground="gray")
-        self.detail_progress_label.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+        self.detail_progress_label.grid(row=3, column=1, sticky="w", padx=5, pady=1)
 
     def update_progress(self, current: int, total: int, percent: float, phase: str):
         """

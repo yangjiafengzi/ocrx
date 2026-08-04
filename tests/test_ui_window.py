@@ -161,6 +161,7 @@ def test_config_page_scrollable_when_window_small(ui_app):
     canvas = ui_app.config_canvas
     assert canvas.winfo_exists()
     assert ui_app.config_scrollbar.winfo_exists()
+    assert ui_app.config_scrollbar.winfo_ismapped(), "窗口缩小时滚动条应可见"
 
     # 内容应高于可视区域（复现“被遮挡”场景）
     top, bottom = canvas.yview()
@@ -177,3 +178,8 @@ def test_config_page_scrollable_when_window_small(ui_app):
     ui_app._on_config_mousewheel(SimpleNamespace(delta=120))
     ui_app.root.update_idletasks()
     assert canvas.yview()[0] < after[0]
+
+    # 模拟画布高度足够大：内容放得下时滚动条自动隐藏
+    ui_app.config_canvas.winfo_height = lambda: 2000
+    ui_app._update_config_scrollbar_visibility()
+    assert not ui_app.config_scrollbar.winfo_ismapped(), "内容放得下时滚动条应隐藏"

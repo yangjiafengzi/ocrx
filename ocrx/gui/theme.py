@@ -44,7 +44,7 @@ def setup_styles(root: tk.Tk):
         bordercolor=BORDER,
         borderwidth=1,
         relief="solid",
-        padding=10,
+        padding=8,
     )
     style.configure(
         "Card.TLabelframe.Label",
@@ -185,7 +185,7 @@ def setup_styles(root: tk.Tk):
         "TNotebook.Tab",
         background="#E2E8F0",
         foreground=TEXT,
-        padding=(18, 8),
+        padding=(16, 6),
         font=(FONT_FAMILY, 9),
     )
     style.map(
@@ -225,20 +225,60 @@ def setup_styles(root: tk.Tk):
         thickness=12,
     )
 
-    # 滚动条
+    # 滚动条：细窄、无箭头、现代扁平样式
     style.configure(
         "Vertical.TScrollbar",
-        background="#CBD5E1",
+        background="#94A3B8",
         troughcolor=BG,
         bordercolor=BG,
-        arrowcolor=MUTED,
+        arrowcolor=BG,
         relief="flat",
+        borderwidth=0,
+        width=10,
+    )
+    style.map(
+        "Vertical.TScrollbar",
+        background=[("active", "#64748B"), ("pressed", "#475569")],
+    )
+    style.layout(
+        "Vertical.TScrollbar",
+        [
+            (
+                "Vertical.Scrollbar.trough",
+                {
+                    "sticky": "ns",
+                    "children": [
+                        ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "ns"}),
+                    ],
+                },
+            )
+        ],
     )
     style.configure(
         "Horizontal.TScrollbar",
-        background="#CBD5E1",
+        background="#94A3B8",
         troughcolor=BG,
         bordercolor=BG,
-        arrowcolor=MUTED,
+        arrowcolor=BG,
         relief="flat",
+        borderwidth=0,
+        height=10,
+    )
+    style.map(
+        "Horizontal.TScrollbar",
+        background=[("active", "#64748B"), ("pressed", "#475569")],
+    )
+    style.layout(
+        "Horizontal.TScrollbar",
+        [
+            (
+                "Horizontal.Scrollbar.trough",
+                {
+                    "sticky": "ew",
+                    "children": [
+                        ("Horizontal.Scrollbar.thumb", {"expand": "1", "sticky": "ew"}),
+                    ],
+                },
+            )
+        ],
     )

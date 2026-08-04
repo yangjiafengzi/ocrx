@@ -127,7 +127,7 @@ class MainWindow:
     def create_widgets(self):
         """创建所有界面组件"""
         main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
 
         # 页头
         header = ttk.Frame(main_frame, style="Header.TFrame")
@@ -136,12 +136,12 @@ class MainWindow:
             header,
             text="OCRX 智能文字识别",
             style="HeaderTitle.TLabel",
-        ).pack(side=tk.LEFT, padx=18, pady=(8, 2))
+        ).pack(side=tk.LEFT, padx=18, pady=(6, 0))
         ttk.Label(
             header,
             text=f"基于 AI 的批量 OCR 工具 · v{__version__}",
             style="HeaderSub.TLabel",
-        ).pack(side=tk.LEFT, padx=4, pady=(12, 2))
+        ).pack(side=tk.LEFT, padx=4, pady=(10, 0))
 
         # 创建 notebook 用于分页
         self.notebook = ttk.Notebook(main_frame)
@@ -200,30 +200,31 @@ class MainWindow:
 
         # ===== API 设置 =====
         api_frame = ttk.LabelFrame(inner, text="API 设置", style="Card.TLabelframe")
-        api_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=(12, 6))
+        api_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=(8, 3))
         api_frame.grid_columnconfigure(1, weight=1)
+        api_frame.grid_columnconfigure(3, weight=1)
 
-        ttk.Label(api_frame, text="Base URL:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
-        self.base_url_entry = ttk.Entry(api_frame, width=70)
-        self.base_url_entry.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Label(api_frame, text="Base URL:").grid(row=0, column=0, sticky="w", padx=8, pady=3)
+        self.base_url_entry = ttk.Entry(api_frame)
+        self.base_url_entry.grid(row=0, column=1, columnspan=3, padx=8, pady=3, sticky="ew")
 
-        ttk.Label(api_frame, text="API Key:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
-        self.api_key_entry = ttk.Entry(api_frame, width=70, show="*")
-        self.api_key_entry.grid(row=1, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Label(api_frame, text="API Key:").grid(row=1, column=0, sticky="w", padx=8, pady=3)
+        self.api_key_entry = ttk.Entry(api_frame, show="*")
+        self.api_key_entry.grid(row=1, column=1, padx=8, pady=3, sticky="ew")
 
-        ttk.Label(api_frame, text="Model Name:").grid(row=2, column=0, sticky="w", padx=8, pady=6)
-        self.model_name_entry = ttk.Entry(api_frame, width=70)
-        self.model_name_entry.grid(row=2, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Label(api_frame, text="Model Name:").grid(row=1, column=2, sticky="w", padx=8, pady=3)
+        self.model_name_entry = ttk.Entry(api_frame)
+        self.model_name_entry.grid(row=1, column=3, padx=8, pady=3, sticky="ew")
         row += 1
 
         # ===== 文件与输出 =====
         files_frame = ttk.LabelFrame(inner, text="文件与输出", style="Card.TLabelframe")
-        files_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
+        files_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=3)
         files_frame.grid_columnconfigure(1, weight=1)
 
-        ttk.Label(files_frame, text="文件路径:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
-        self.file_paths_entry = ttk.Entry(files_frame, width=70)
-        self.file_paths_entry.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Label(files_frame, text="文件路径:").grid(row=0, column=0, sticky="w", padx=8, pady=3)
+        self.file_paths_entry = ttk.Entry(files_frame)
+        self.file_paths_entry.grid(row=0, column=1, padx=8, pady=3, sticky="ew")
 
         file_button_frame = ttk.Frame(files_frame, style="Card.TFrame")
         file_button_frame.grid(row=0, column=2, padx=6, sticky="w")
@@ -235,59 +236,57 @@ class MainWindow:
             text="支持格式：PDF、JPG、PNG、BMP、GIF、TIFF、WebP、HEIC、RAW(CR2/NEF/ARW/DNG)",
             style="Muted.TLabel",
         )
-        format_hint.grid(row=1, column=1, sticky="w", padx=8, pady=(0, 4))
+        format_hint.grid(row=1, column=1, sticky="w", padx=8, pady=(0, 2))
 
-        ttk.Label(files_frame, text="输出目录:").grid(row=2, column=0, sticky="w", padx=8, pady=6)
-        self.output_dir_entry = ttk.Entry(files_frame, width=70)
-        self.output_dir_entry.grid(row=2, column=1, padx=8, pady=6, sticky="ew")
+        ttk.Label(files_frame, text="输出目录:").grid(row=2, column=0, sticky="w", padx=8, pady=3)
+        self.output_dir_entry = ttk.Entry(files_frame)
+        self.output_dir_entry.grid(row=2, column=1, padx=8, pady=3, sticky="ew")
         ttk.Button(
             files_frame,
             text="选择目录",
             style="Secondary.TButton",
             command=self.select_output_dir,
-        ).grid(row=2, column=2, padx=8, pady=6)
+        ).grid(row=2, column=2, padx=8, pady=3)
         row += 1
 
         # ===== 识别参数 =====
         params_frame = ttk.LabelFrame(inner, text="识别参数", style="Card.TLabelframe")
-        params_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
+        params_frame.grid(row=row, column=0, sticky="ew", padx=14, pady=3)
         params_frame.grid_columnconfigure(1, weight=1)
+        params_frame.grid_columnconfigure(3, weight=1)
 
-        ttk.Label(params_frame, text="PDF 缩放比例:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
-        self.scale_combobox = ttk.Combobox(params_frame, values=self.scale_options, width=10, state="readonly")
-        self.scale_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=6)
-        ttk.Label(params_frame, text="建议值 1.0 ~ 5.0", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=8, pady=6)
+        ttk.Label(params_frame, text="PDF 缩放比例 (1~5):").grid(row=0, column=0, sticky="w", padx=8, pady=3)
+        self.scale_combobox = ttk.Combobox(params_frame, values=self.scale_options, width=8, state="readonly")
+        self.scale_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=3)
+        ttk.Label(params_frame, text="最大并发数 (5~20):").grid(row=0, column=2, sticky="w", padx=8, pady=3)
+        self.workers_combobox = ttk.Combobox(params_frame, values=self.worker_options, width=8, state="readonly")
+        self.workers_combobox.grid(row=0, column=3, sticky="w", padx=8, pady=3)
 
-        ttk.Label(params_frame, text="最大并发数:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
-        self.workers_combobox = ttk.Combobox(params_frame, values=self.worker_options, width=10, state="readonly")
-        self.workers_combobox.grid(row=1, column=1, sticky="w", padx=8, pady=6)
-        ttk.Label(params_frame, text="建议值 5 ~ 20", style="Muted.TLabel").grid(row=1, column=2, sticky="w", padx=8, pady=6)
-
-        ttk.Label(params_frame, text="页码范围 (PDF):").grid(row=2, column=0, sticky="w", padx=8, pady=6)
+        ttk.Label(params_frame, text="页码范围 (PDF):").grid(row=1, column=0, sticky="w", padx=8, pady=3)
         self.page_range_var = tk.StringVar(value="")
         self.page_range_entry = ttk.Entry(params_frame, textvariable=self.page_range_var, width=20)
-        self.page_range_entry.grid(row=2, column=1, sticky="w", padx=8, pady=6)
+        self.page_range_entry.grid(row=1, column=1, sticky="w", padx=8, pady=3)
         ttk.Label(
             params_frame,
             text="例如: 1,3,5-10，留空表示全部",
             style="Muted.TLabel",
-        ).grid(row=2, column=2, sticky="w", padx=8, pady=6)
+        ).grid(row=1, column=2, columnspan=2, sticky="w", padx=8, pady=3)
         row += 1
 
         # ===== 提示词 =====
         prompt_frame = ttk.LabelFrame(inner, text="提示词", style="Card.TLabelframe")
-        prompt_frame.grid(row=row, column=0, sticky="nsew", padx=14, pady=6)
+        prompt_frame.grid(row=row, column=0, sticky="nsew", padx=14, pady=3)
         prompt_frame.grid_columnconfigure(1, weight=1)
         prompt_frame.grid_rowconfigure(1, weight=1)
 
-        ttk.Label(prompt_frame, text="预设:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        ttk.Label(prompt_frame, text="预设:").grid(row=0, column=0, sticky="w", padx=8, pady=3)
         self.prompt_preset_var = tk.StringVar()
         self.prompt_preset_combobox = ttk.Combobox(
             prompt_frame, textvariable=self.prompt_preset_var,
             values=list(self.prompt_templates.keys()), state="readonly", width=20
         )
         self.prompt_preset_combobox.bind("<<ComboboxSelected>>", self.on_prompt_preset_selected)
-        self.prompt_preset_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=6)
+        self.prompt_preset_combobox.grid(row=0, column=1, sticky="w", padx=8, pady=3)
 
         # 提示词预设管理按钮（在同一行）
         self.prompt_handler.set_widgets(
@@ -297,11 +296,11 @@ class MainWindow:
         )
         self.prompt_handler.create_preset_buttons(prompt_frame, 0, 2)
 
-        ttk.Label(prompt_frame, text="自定义提示词:").grid(row=1, column=0, sticky="nw", padx=8, pady=6)
+        ttk.Label(prompt_frame, text="自定义提示词:").grid(row=1, column=0, sticky="nw", padx=8, pady=3)
         self.prompt_text = scrolledtext.ScrolledText(
             prompt_frame,
             width=80,
-            height=7,
+            height=4,
             wrap=tk.WORD,
             font=("Microsoft YaHei UI", 10),
             bg="#FFFFFF",
@@ -314,7 +313,7 @@ class MainWindow:
             padx=10,
             pady=8,
         )
-        self.prompt_text.grid(row=1, column=1, columnspan=2, padx=8, pady=6, sticky="nsew")
+        self.prompt_text.grid(row=1, column=1, columnspan=2, padx=8, pady=3, sticky="nsew")
         row += 1
 
         # 更新 PromptHandler 的 prompt_text 引用
@@ -341,10 +340,24 @@ class MainWindow:
         """画布宽度变化时，让内容区跟随宽度。"""
         if hasattr(self, "_config_window_id"):
             self.config_canvas.itemconfigure(self._config_window_id, width=event.width)
+        self._update_config_scrollbar_visibility()
 
     def _on_config_inner_configure(self, event):
         """内容尺寸变化时更新滚动范围。"""
         self.config_canvas.configure(scrollregion=self.config_canvas.bbox("all"))
+        self._update_config_scrollbar_visibility()
+
+    def _update_config_scrollbar_visibility(self):
+        """内容未超出可视区时隐藏滚动条，避免常驻一条空轨道。"""
+        try:
+            bbox = self.config_canvas.bbox("all")
+            view_h = self.config_canvas.winfo_height()
+            if bbox and view_h > 0 and bbox[3] <= view_h + 1:
+                self.config_scrollbar.grid_remove()
+            else:
+                self.config_scrollbar.grid()
+        except tk.TclError:
+            pass
 
     def _bind_mousewheel(self, widget):
         """递归绑定鼠标滚轮，保证滚动条在配置页任意位置可用。"""
@@ -391,7 +404,7 @@ class MainWindow:
     def create_bottom_buttons(self, parent):
         """创建底部按钮"""
         button_frame = ttk.Frame(parent)
-        button_frame.pack(fill=tk.X, pady=10)
+        button_frame.pack(fill=tk.X, pady=(8, 2))
 
         ttk.Button(button_frame, text="识别并保存", style="Primary.TButton", command=self.start_ocr_and_save).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="识别并复制", style="Success.TButton", command=self.start_ocr_and_copy).pack(side=tk.LEFT, padx=5)
