@@ -322,8 +322,12 @@ def test_e2e_cancel_stops_pipeline(tmp_path, e2e_server):
         service.request_cancel()
         thread.join(timeout=15)
 
-        assert result == {}
-        assert not list(tmp_path.glob("*_ocr.md"))
+        # 取消后应保存已完成的部分结果
+        assert result, "取消后应返回已完成的部分结果"
+        assert all(ok for ok, _ in result.values())
+        saved = list(tmp_path.glob("*_ocr.md"))
+        assert len(saved) == 1
+        assert "内容-1" in saved[0].read_text(encoding="utf-8")
         with server.lock:
             assert len(server.requests) == 1
     finally:

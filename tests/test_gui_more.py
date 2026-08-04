@@ -541,3 +541,20 @@ def test_attach_scrollbar_hides_and_min_thumb():
     assert sb.mapped is True
     first, last = sb.get()
     assert last - first >= 40 / 200 - 1e-9, "滑块不应细到消失"
+
+
+def test_example_preview_truncation():
+    """回归测试：示例预览按显示宽度截断，省略号必须可见。"""
+    from ocrx.gui.example_manager_ui import ExampleManagerUI
+
+    long_text = "这是一个很长的示例识别文本内容" * 10
+    preview = ExampleManagerUI._make_preview(long_text)
+    assert preview.endswith("…")
+    assert len(preview) < len(long_text)
+    # 半角字符占位更少，允许显示更多
+    ascii_preview = ExampleManagerUI._make_preview("a" * 100)
+    assert ascii_preview.endswith("…")
+    assert len(ascii_preview) > len(preview)
+    # 短文本原样返回
+    short = "短文本"
+    assert ExampleManagerUI._make_preview(short) == short

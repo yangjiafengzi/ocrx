@@ -203,6 +203,33 @@ class ExampleLibrary:
     def get_example(self, ex_id: str) -> Optional[Example]:
         """获取单个示例"""
         return next((ex for ex in self.examples if ex.id == ex_id), None)
+
+    def update_example(
+        self,
+        ex_id: str,
+        text: str = None,
+        description: str = None
+    ) -> bool:
+        """
+        更新示例的识别文本与描述
+
+        Args:
+            ex_id: 示例ID
+            text: 新的识别文本（None 表示不修改）
+            description: 新的描述（None 表示不修改）
+
+        Returns:
+            是否更新成功
+        """
+        example = self.get_example(ex_id)
+        if example is None:
+            return False
+        if text is not None:
+            example.text = text
+        if description is not None:
+            example.description = description
+        self._save_examples()
+        return True
     
     def get_all_examples(self) -> List[Example]:
         """获取所有示例"""

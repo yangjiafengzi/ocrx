@@ -476,3 +476,48 @@ def test_trees_hide_when_content_fits(ui_app, sample_png):
     assert all(not w.winfo_ismapped() for w in scrollbars), (
         "内容放得下时不应显示满条假滑块"
     )
+
+
+def test_example_row_double_click_opens_editor(ui_app, sample_png, monkeypatch):
+    """回归测试：双击示例行应打开预览编辑框，保存后更新库。"""
+    import ocrx.gui.example_manager_ui as emu_mod
+
+    monkeypatch.setattr(emu_mod.messagebox, "showinfo", lambda *a, **k: None)
+    monkeypatch.setattr(emu_mod.messagebox, "showwarning", lambda *a, **k: None)
+
+    ex = ui_app.example_library.add_example(
+        str(sample_png), "原始识别文本", "原始描述"
+    )
+    for tab_id in ui_app.notebook.tabs():
+        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
+            ui_app.notebook.select(tab_id)
+            break
+    ui_app.example_manager_ui.refresh_list()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    manager = ui_app.example_manager_ui
+    tree = manager.tree
+    first_item = tree.get_children()[0]
+    bbox = tree.bbox(first_item)
+    click_x = bbox[0] + bbox[2] // 2 if bbox else 200
+    click_y = bbox[1] + bbox[3] // 2 if bbox else 20
+    manager._on_row_double_click(SimpleNamespace(x=click_x, y=click_y))
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    assert manager._editor_dialog is not None
+    assert manager._editor_dialog.winfo_exists(), "双击后应弹出编辑框"
+
+    manager._editor_text.delete("1.0", tk.END)
+    manager._editor_text.insert("1.0", "修改后的识别文本")
+    manager._editor_desc.delete(0, tk.END)
+    manager._editor_desc.insert(0, "修改后的描述")
+    manager._editor_on_save()
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    updated = ui_app.example_library.get_example(ex.id)
+    assert updated.text == "修改后的识别文本"
+    assert updated.description == "修改后的描述"
+    assert not manager._editor_dialog.winfo_exists(), "保存后编辑框应关闭"

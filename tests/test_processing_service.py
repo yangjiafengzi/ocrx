@@ -2,6 +2,8 @@
 """ProcessingService 单元测试（全部组件使用假实现）。"""
 
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
@@ -234,15 +236,32 @@ def test_cancel_during_recognize_stops_submitting(tmp_path, service):
     png = tmp_path / "pic.png"
     png.write_bytes(b"png")
 
-    def cancel_on_first(prompt, identifier, img_data, max_retries=5, example_images=None, cancel_check=None):
-        service.request_cancel()
+    def fake_engine(prompt, identifier, img_data, max_retries=5, example_images=None, cancel_check=None):
         return (identifier, "部分")
 
-    service.ocr_engine.process_single_image = cancel_on_first
-    results = service.process_files([str(png)] * 3, "p")
-    assert results == {}
+    service.ocr_engine.process_single_image = fake_engine
+    output = {}
+
+    def run():
+        output.update(service.process_files([str(png)] * 3, "p"))
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    # 等第一批任务真正完成后请求取消
+    deadline = time.time() + 5
+    while service.ocr_engine.calls < 1 and time.time() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.05)
+    service.request_cancel()
+    thread.join(timeout=5)
+
     # 分批提交：取消后不应再提交新一批页面（首批最多 max_workers 个）
     assert service.ocr_engine.calls <= service.max_workers
+    # 取消后应保存已完成的部分结果
+    results = output
+    assert results["pic"][0] is True
+    assert Path(results["pic"][1]).exists()
+    assert "部分" in Path(results["pic"][1]).read_text(encoding="utf-8")
 
 
 def test_process_and_copy_cancel(tmp_path, service):
@@ -252,3 +271,31 @@ def test_process_and_copy_cancel(tmp_path, service):
     ok, msg = service.process_and_copy([str(png)], "p")
     assert ok is False
     assert "取消" in msg
+
+
+def test_process_and_copy_cancel_during_recognize_returns_partial(tmp_path, service):
+    """取消发生在识别过程中时，应返回已完成的部分结果供复制。"""
+    png = tmp_path / "pic.png"
+    png.write_bytes(b"png")
+
+    def fake_engine(prompt, identifier, img_data, max_retries=5, example_images=None, cancel_check=None):
+        return (identifier, "部分内容")
+
+    service.ocr_engine.process_single_image = fake_engine
+    output = {}
+
+    def run():
+        output["result"] = service.process_and_copy([str(png)] * 3, "p")
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    deadline = time.time() + 5
+    while service.ocr_engine.calls < 1 and time.time() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.05)
+    service.request_cancel()
+    thread.join(timeout=5)
+
+    ok, content = output["result"]
+    assert ok is True
+    assert "部分内容" in content

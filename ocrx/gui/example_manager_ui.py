@@ -9,6 +9,8 @@ from tkinter import ttk, messagebox, filedialog
 from typing import Callable, List, Optional
 from pathlib import Path
 
+from PIL import Image, ImageTk
+
 from ..example_library import ExampleLibrary, Example
 from .theme import (
     BORDER,
@@ -113,6 +115,7 @@ class ExampleManagerUI:
         
         # 绑定点击事件
         self.tree.bind('<ButtonRelease-1>', self._on_tree_click)
+        self.tree.bind('<Double-1>', self._on_row_double_click)
         
         # 底部提示
         hint_text = "提示：点击复选框选择要在识别时使用的示例（建议1-3个）"
@@ -159,6 +162,25 @@ class ExampleManagerUI:
         values = list(self.tree.item(item, 'values'))
         values[0] = "☑" if is_selected else "☐"
         self.tree.item(item, values=values)
+
+    @staticmethod
+    def _make_preview(text: str, max_units: int = 30) -> str:
+        """
+        生成按显示宽度截断的预览文本（CJK 按 2 个半角单位计）。
+        避免长文本在列宽内被硬切、省略号不可见。
+        """
+        preview = text.replace('\n', ' ').strip()
+        units = 0
+        out = []
+        for ch in preview:
+            units += 2 if ord(ch) > 0x2E7F else 1
+            if units > max_units:
+                break
+            out.append(ch)
+        result = ''.join(out)
+        if result != preview:
+            return result + "…"
+        return preview
     
     def _on_add_example(self):
         """添加示例按钮回调"""
@@ -292,14 +314,13 @@ class ExampleManagerUI:
         for example in examples:
             is_selected = example.id in self.selected_examples
             check_mark = "☑" if is_selected else "☐"
-            
-            # 文本预览（前50个字符）
-            text_preview = example.text[:50] + "..." if len(example.text) > 50 else example.text
-            text_preview = text_preview.replace('\n', ' ')
+
+            # 文本预览（按显示宽度截断，保证省略号可见）
+            text_preview = self._make_preview(example.text)
             
             self.tree.insert('', tk.END, values=(
                 check_mark,
-                example.id[:8] + "...",  # 缩短ID显示
+                self._make_preview(example.id, max_units=16),
                 example.description or "无描述",
                 text_preview
             ), tags=(example.id,))
@@ -310,6 +331,93 @@ class ExampleManagerUI:
         # 触发回调
         if self.on_selection_change:
             self.on_selection_change(self.selected_examples.copy())
+
+    def _on_row_double_click(self, event):
+        """双击示例行：打开预览与编辑框。"""
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return
+        tags = self.tree.item(item, 'tags')
+        ex_id = tags[0] if tags else None
+        example = self.library.get_example(ex_id) if ex_id else None
+        if example:
+            self._open_editor(example)
+
+    def _open_editor(self, example: Example):
+        """打开示例预览与编辑对话框。"""
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("示例预览与编辑")
+        dialog.geometry("560x540")
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        self._editor_dialog = dialog
+
+        # 图片预览
+        try:
+            img = Image.open(example.image_path)
+            img.thumbnail((260, 180))
+            photo = ImageTk.PhotoImage(img)
+            img_label = tk.Label(dialog, image=photo, bg="#FFFFFF")
+            img_label.image = photo  # 保持引用，防止被回收
+            img_label.pack(pady=8)
+        except Exception:
+            ttk.Label(
+                dialog,
+                text=f"图片预览不可用：{example.image_path}",
+                style="Muted.TLabel",
+            ).pack(pady=8)
+
+        ttk.Label(dialog, text="正确识别结果：").pack(anchor="w", padx=12)
+        text_frame = ttk.Frame(dialog, style="Card.TFrame")
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
+        text_widget = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            height=8,
+            font=("Microsoft YaHei UI", 10),
+            bg="#FFFFFF",
+            fg=TEXT,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            insertbackground=TEXT,
+            padx=8,
+            pady=8,
+        )
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        text_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.configure(yscrollcommand=text_scroll.set)
+        text_widget.insert("1.0", example.text)
+        self._editor_text = text_widget
+
+        ttk.Label(dialog, text="描述/标签：").pack(anchor="w", padx=12)
+        desc_var = tk.StringVar(value=example.description)
+        desc_entry = ttk.Entry(dialog, textvariable=desc_var, width=60)
+        desc_entry.pack(fill=tk.X, padx=12, pady=4)
+        self._editor_desc = desc_entry
+
+        def on_save():
+            new_text = text_widget.get("1.0", tk.END).strip()
+            if not new_text:
+                messagebox.showwarning("提示", "识别文本不能为空", parent=dialog)
+                return
+            if self.library.update_example(
+                example.id,
+                text=new_text,
+                description=desc_var.get().strip(),
+            ):
+                self.refresh_list()
+                messagebox.showinfo("成功", "示例已更新", parent=self.parent)
+            else:
+                messagebox.showerror("错误", "更新示例失败", parent=dialog)
+            dialog.destroy()
+
+        self._editor_on_save = on_save
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="保存", style="Primary.TButton", command=on_save).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="取消", style="Secondary.TButton", command=dialog.destroy).pack(side=tk.LEFT, padx=6)
     
     def get_selected_examples(self) -> List[str]:
         """获取选中的示例ID列表"""

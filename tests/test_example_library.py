@@ -79,6 +79,19 @@ def test_search_by_description(tmp_path, sample_png):
     assert found[0].description == "手写笔记"
 
 
+def test_update_example(tmp_path, sample_png):
+    lib = make_library(tmp_path)
+    example = lib.add_example(str(sample_png), "旧文本", "旧描述")
+    assert lib.update_example(example.id, text="新文本", description="新描述") is True
+    updated = lib.get_example(example.id)
+    assert updated.text == "新文本"
+    assert updated.description == "新描述"
+    assert lib.update_example("不存在", text="x") is False
+    # 重新加载后仍生效
+    lib2 = make_library(tmp_path)
+    assert lib2.get_example(example.id).text == "新文本"
+
+
 def test_persist_and_reload(tmp_path, sample_png):
     lib = make_library(tmp_path)
     lib.add_example(str(sample_png), "持久化内容", "标签")

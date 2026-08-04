@@ -666,8 +666,8 @@ class MainWindow:
 
         if self.processing_service:
             self.processing_service.request_cancel()
-        self.logger.info("已请求停止任务，等待当前页面收尾", "Task")
-        messagebox.showinfo("提示", "已请求停止，正在识别的页面完成后将自动结束。")
+        self.logger.info("已请求停止任务，保存/输出已完成结果", "Task")
+        messagebox.showinfo("提示", "已请求停止，正在保存/输出已完成的结果，请稍候…")
 
     def save_config(self, show_dialog: bool = True):
         """保存配置

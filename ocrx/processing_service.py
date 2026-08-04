@@ -195,7 +195,8 @@ class ProcessingService:
         batch_size = max(1, self.max_workers)
         index = 0
 
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        try:
             future_to_index = {}
 
             def submit_until_full():
@@ -226,10 +227,9 @@ class ProcessingService:
             completed = 0
             from concurrent.futures import TimeoutError
 
-            while future_to_index:
-                done, _ = wait(future_to_index, return_when=FIRST_COMPLETED)
-
-                for future in done:
+            def collect(done_futures):
+                nonlocal completed
+                for future in done_futures:
                     idx = future_to_index.pop(future)
                     file_stem, page_num = pages[idx][:2]
 
@@ -269,14 +269,35 @@ class ProcessingService:
                         overall_percent = 20 + (ocr_percent * 0.7)
                         progress_callback(completed, total_pages, f"OCR识别 ({completed}/{total_pages})", overall_percent)
 
+            while future_to_index:
+                if self._is_cancel_requested():
+                    # 取消：先非阻塞收集已经完成的结果，再立即退出
+                    done = [f for f in future_to_index if f.done()]
+                    if done:
+                        collect(done)
+                    if future_to_index:
+                        self.logger_inst.warning(
+                            f"任务已取消，立即停止，已收集 {len(successful_results)} 页结果",
+                            "OCR",
+                        )
+                        break
+                    continue
+
+                done, _ = wait(future_to_index, return_when=FIRST_COMPLETED)
+                collect(done)
                 if self._is_cancel_requested():
                     self.logger_inst.warning(
                         f"任务已取消，已处理 {completed}/{total_pages} 页，停止提交新任务",
-                        "OCR"
+                        "OCR",
                     )
-                    continue
-
+                    break
                 submit_until_full()
+        finally:
+            if self._is_cancel_requested():
+                # 不等待未完成的任务（它们会在后台结束），未启动任务直接取消
+                executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                executor.shutdown(wait=True)
 
         # 统计成功识别的页数
         total_success = len(successful_results)
@@ -390,7 +411,23 @@ class ProcessingService:
         )
 
         if self._is_cancel_requested():
-            self.logger_inst.warning(f"文件处理已取消：{path_obj.name}", "FileProcess")
+            self.logger_inst.warning(
+                f"文件处理已取消，保存已完成结果：{path_obj.name}", "FileProcess"
+            )
+            self._update_status("任务已取消，正在保存已完成结果...")
+            _, output_results = self._merge_results(
+                results, save_to_file=True
+            )
+            if (
+                path_obj.stem in output_results
+                and output_results[path_obj.stem][0]
+            ):
+                self._update_status("任务已取消，已完成结果已保存")
+                return (
+                    True,
+                    output_results[path_obj.stem][1],
+                    path_obj.stem,
+                )
             self._update_status("任务已取消")
             return (False, None, path_obj.stem)
 
@@ -481,9 +518,16 @@ class ProcessingService:
         )
 
         if self._is_cancel_requested():
-            self.logger_inst.warning("批量处理已取消，不保存结果", "BatchProcess")
-            self._update_status("任务已取消")
-            return {}
+            self.logger_inst.warning("批量处理已取消，保存已完成结果", "BatchProcess")
+            self._update_status("任务已取消，正在保存已完成结果...")
+            _, output_results = self._merge_results(
+                results,
+                save_to_file=True,
+                progress_callback=self._update_progress,
+            )
+            output_results.update(failed_files)
+            self._update_status("任务已取消，已完成结果已保存")
+            return output_results
 
         # 3. 合并并保存（进度：90-100%）
         self._update_status("合并并保存结果...")
@@ -552,8 +596,16 @@ class ProcessingService:
             )
 
             if self._is_cancel_requested():
-                self._update_status("任务已取消")
-                return (False, "任务已取消")
+                if not results:
+                    self._update_status("任务已取消，暂无已完成结果")
+                    return (False, "任务已取消，暂无已完成结果")
+                self._update_status("任务已取消，返回已完成结果")
+                total_content, _ = self._merge_results(
+                    results,
+                    save_to_file=False,
+                    progress_callback=self._update_progress,
+                )
+                return (True, total_content)
 
             # 3. 合并结果（进度：90-100%），不保存文件
             self._update_status("合并结果...")
