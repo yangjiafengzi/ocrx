@@ -252,78 +252,78 @@ def setup_styles(root: tk.Tk):
         )
     ]
 
-    # 默认滚动条：用于白色背景的文本框/表格，轨道融入白色背景，只露出滑块
+    # 默认滚动条：一整条可见滑轨 + 浅色滑块（用于白色背景的文本框/表格）
     style.configure(
         "Vertical.TScrollbar",
-        background="#94A3B8",  # 滑块
-        troughcolor=SURFACE,
-        bordercolor=SURFACE,
-        lightcolor=SURFACE,
-        darkcolor=SURFACE,
-        arrowcolor=SURFACE,
+        background="#E2E8F0",  # 滑块（浅色）
+        troughcolor="#94A3B8",  # 滑轨（深色，一整条可见）
+        bordercolor="#94A3B8",
+        lightcolor="#94A3B8",
+        darkcolor="#94A3B8",
+        arrowcolor="#94A3B8",
         relief="flat",
         borderwidth=0,
-        width=10,
+        width=12,
     )
     style.map(
         "Vertical.TScrollbar",
-        background=[("active", "#64748B"), ("pressed", "#475569")],
+        background=[("active", "#FFFFFF"), ("pressed", "#CBD5E1")],
     )
     style.layout("Vertical.TScrollbar", _scrollbar_layout)
 
-    # 页面背景（浅灰）滚动条：用于配置页画布
+    # 页面背景滚动条：用于配置页画布（同样的可见滑轨设计）
     style.configure(
         "Page.Vertical.TScrollbar",
-        background="#94A3B8",
-        troughcolor=BG,
-        bordercolor=BG,
-        lightcolor=BG,
-        darkcolor=BG,
-        arrowcolor=BG,
+        background="#E2E8F0",
+        troughcolor="#94A3B8",
+        bordercolor="#94A3B8",
+        lightcolor="#94A3B8",
+        darkcolor="#94A3B8",
+        arrowcolor="#94A3B8",
         relief="flat",
         borderwidth=0,
-        width=10,
+        width=12,
     )
     style.map(
         "Page.Vertical.TScrollbar",
-        background=[("active", "#64748B"), ("pressed", "#475569")],
+        background=[("active", "#FFFFFF"), ("pressed", "#CBD5E1")],
     )
     style.layout("Page.Vertical.TScrollbar", _scrollbar_layout)
 
     style.configure(
         "Horizontal.TScrollbar",
-        background="#94A3B8",
-        troughcolor=SURFACE,
-        bordercolor=SURFACE,
-        lightcolor=SURFACE,
-        darkcolor=SURFACE,
-        arrowcolor=SURFACE,
+        background="#E2E8F0",
+        troughcolor="#94A3B8",
+        bordercolor="#94A3B8",
+        lightcolor="#94A3B8",
+        darkcolor="#94A3B8",
+        arrowcolor="#94A3B8",
         relief="flat",
         borderwidth=0,
-        height=10,
+        height=12,
     )
     style.map(
         "Horizontal.TScrollbar",
-        background=[("active", "#64748B"), ("pressed", "#475569")],
+        background=[("active", "#FFFFFF"), ("pressed", "#CBD5E1")],
     )
     style.layout("Horizontal.TScrollbar", _scrollbar_layout_h)
 
-    # 深色页面（运行日志）滚动条：轨道融入深色背景，滑块用中灰
+    # 深色页面（运行日志）滚动条：深色滑轨 + 浅色滑块
     style.configure(
         "Dark.Vertical.TScrollbar",
-        background="#64748B",
-        troughcolor="#0F172A",
-        bordercolor="#0F172A",
-        lightcolor="#0F172A",
-        darkcolor="#0F172A",
-        arrowcolor="#0F172A",
+        background="#E2E8F0",
+        troughcolor="#334155",
+        bordercolor="#334155",
+        lightcolor="#334155",
+        darkcolor="#334155",
+        arrowcolor="#334155",
         relief="flat",
         borderwidth=0,
-        width=10,
+        width=12,
     )
     style.map(
         "Dark.Vertical.TScrollbar",
-        background=[("active", "#94A3B8"), ("pressed", "#94A3B8")],
+        background=[("active", "#FFFFFF"), ("pressed", "#CBD5E1")],
     )
     style.layout("Dark.Vertical.TScrollbar", _scrollbar_layout)
 

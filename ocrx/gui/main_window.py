@@ -128,10 +128,12 @@ class MainWindow:
         """创建所有界面组件"""
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
 
         # 页头
         header = ttk.Frame(main_frame, style="Header.TFrame")
-        header.pack(fill=tk.X, pady=(0, 6))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         ttk.Label(
             header,
             text="OCRX 智能文字识别",
@@ -145,7 +147,7 @@ class MainWindow:
 
         # 创建 notebook 用于分页
         self.notebook = ttk.Notebook(main_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        self.notebook.grid(row=1, column=0, sticky="nsew")
 
         # 主要配置页面
         config_frame = ttk.Frame(self.notebook)
@@ -407,8 +409,9 @@ class MainWindow:
 
     def create_bottom_buttons(self, parent):
         """创建底部按钮"""
-        button_frame = ttk.Frame(parent)
-        button_frame.pack(fill=tk.X, pady=(6, 0))
+        self.bottom_button_frame = ttk.Frame(parent)
+        button_frame = self.bottom_button_frame
+        button_frame.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
         ttk.Button(button_frame, text="识别并保存", style="Primary.TButton", command=self.start_ocr_and_save).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="识别并复制", style="Success.TButton", command=self.start_ocr_and_copy).pack(side=tk.LEFT, padx=5)

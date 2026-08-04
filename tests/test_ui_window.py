@@ -196,3 +196,24 @@ def test_all_text_scrollbars_unified(ui_app):
     assert str(ui_app.log_text.vbar.cget("style")) == "Dark.Vertical.TScrollbar"
     assert str(ui_app.prompt_text.vbar.cget("style")) == "Vertical.TScrollbar"
     assert str(ui_app.result_text.vbar.cget("style")) == "Vertical.TScrollbar"
+    # 滚动条应为“一整条深色滑轨 + 浅色滑块”
+    style = ttk.Style(ui_app.root)
+    assert style.lookup("Vertical.TScrollbar", "troughcolor") == "#94A3B8"
+    assert style.lookup("Vertical.TScrollbar", "background") == "#E2E8F0"
+    assert style.lookup("Dark.Vertical.TScrollbar", "troughcolor") == "#334155"
+    assert style.lookup("Dark.Vertical.TScrollbar", "background") == "#E2E8F0"
+
+
+def test_bottom_buttons_visible_after_shrink(ui_app):
+    """回归测试：手动缩小窗口后，底部操作按钮不能被挤出可视区。"""
+    ui_app.root.minsize(300, 250)
+    ui_app.root.geometry("900x380")
+    ui_app.root.update_idletasks()
+    ui_app.root.update()
+
+    bar = ui_app.bottom_button_frame
+    assert bar.winfo_ismapped(), "缩小窗口后底部按钮栏不应消失"
+    win_h = ui_app.root.winfo_height()
+    y = bar.winfo_rooty() - ui_app.root.winfo_rooty()
+    assert y >= 0, "底部按钮栏顶部不应超出窗口"
+    assert y + bar.winfo_height() <= win_h + 2, "底部按钮栏不应超出窗口底部"
