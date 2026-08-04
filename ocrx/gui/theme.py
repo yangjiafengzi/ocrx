@@ -5,6 +5,7 @@ OCRX 界面主题。
 """
 
 import tkinter as tk
+import tkinter.scrolledtext as scrolledtext
 from tkinter import ttk
 
 # 配色
@@ -282,3 +283,23 @@ def setup_styles(root: tk.Tk):
             )
         ],
     )
+
+
+def apply_themed_scrollbar(text_widget: scrolledtext.ScrolledText) -> ttk.Scrollbar:
+    """把 ScrolledText 内置的原生滚动条替换为统一风格的 ttk 滚动条。"""
+    vbar = ttk.Scrollbar(text_widget, orient="vertical", command=text_widget.yview)
+    try:
+        text_widget.vbar.destroy()
+    except tk.TclError:
+        pass
+    text_widget.vbar = vbar
+    vbar.grid(row=0, column=1, sticky="ns")
+    text_widget.configure(yscrollcommand=vbar.set)
+    return vbar
+
+
+def themed_scrolled_text(parent, **kwargs) -> scrolledtext.ScrolledText:
+    """创建带统一风格滚动条的 ScrolledText。"""
+    widget = scrolledtext.ScrolledText(parent, **kwargs)
+    apply_themed_scrollbar(widget)
+    return widget

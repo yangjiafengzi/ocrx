@@ -5,9 +5,9 @@
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox
 
-from ..theme import BORDER, SURFACE, TEXT
+from ..theme import BORDER, SURFACE, TEXT, themed_scrolled_text
 from .base_handler import BaseHandler
 
 
@@ -30,7 +30,7 @@ class ResultHandler(BaseHandler):
         parent.grid_rowconfigure(0, weight=1)
         
         # 创建文本框显示识别结果
-        self.text_widget = scrolledtext.ScrolledText(
+        self.text_widget = themed_scrolled_text(
             parent, 
             wrap=tk.WORD,
             font=("Consolas", 11),

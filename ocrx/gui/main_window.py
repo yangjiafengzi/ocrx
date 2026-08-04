@@ -5,7 +5,7 @@ OCRX 应用程序的主界面 - 只使用处理器
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 import threading
 from typing import List, Optional
@@ -19,7 +19,7 @@ from ..example_library import ExampleLibrary
 
 # 导入处理器
 from .example_manager_ui import ExampleManagerUI
-from .theme import BG, BORDER, PRIMARY, TEXT, setup_styles
+from .theme import BG, BORDER, PRIMARY, TEXT, setup_styles, themed_scrolled_text
 from .handlers import (
     SaveHandler, CopyHandler, ClipboardHandler,
     ResultHandler, PromptHandler, ProgressHandler
@@ -297,7 +297,7 @@ class MainWindow:
         self.prompt_handler.create_preset_buttons(prompt_frame, 0, 2)
 
         ttk.Label(prompt_frame, text="自定义提示词:").grid(row=1, column=0, sticky="nw", padx=8, pady=3)
-        self.prompt_text = scrolledtext.ScrolledText(
+        self.prompt_text = themed_scrolled_text(
             prompt_frame,
             width=80,
             height=4,
@@ -374,7 +374,7 @@ class MainWindow:
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        self.log_text = scrolledtext.ScrolledText(
+        self.log_text = themed_scrolled_text(
             parent,
             wrap=tk.WORD,
             width=120,
