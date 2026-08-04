@@ -192,3 +192,7 @@ def test_all_text_scrollbars_unified(ui_app):
         assert isinstance(widget.vbar, ttk.Scrollbar), (
             f"{widget} 的滚动条未统一为 ttk 样式"
         )
+    # 日志页为深色控制台，滚动条应使用深色适配样式
+    assert str(ui_app.log_text.vbar.cget("style")) == "Dark.Vertical.TScrollbar"
+    assert str(ui_app.prompt_text.vbar.cget("style")) == "Vertical.TScrollbar"
+    assert str(ui_app.result_text.vbar.cget("style")) == "Vertical.TScrollbar"

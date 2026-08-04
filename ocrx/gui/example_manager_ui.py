@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 from pathlib import Path
 
 from ..example_library import ExampleLibrary, Example
+from .theme import BORDER, TEXT
 
 
 class ExampleManagerUI:
@@ -162,8 +163,29 @@ class ExampleManagerUI:
         
         ttk.Label(dialog, text="该图片的正确识别结果：").pack(pady=5)
         
-        text_widget = tk.Text(dialog, wrap=tk.WORD, width=50, height=8)
-        text_widget.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        text_frame = ttk.Frame(dialog, style="Card.TFrame")
+        text_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        text_widget = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            width=50,
+            height=8,
+            font=("Microsoft YaHei UI", 10),
+            bg="#FFFFFF",
+            fg=TEXT,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            insertbackground=TEXT,
+            padx=8,
+            pady=8,
+        )
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        text_scrollbar = ttk.Scrollbar(
+            text_frame, orient="vertical", command=text_widget.yview
+        )
+        text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.configure(yscrollcommand=text_scrollbar.set)
         
         ttk.Label(dialog, text="描述/标签（可选）：").pack(pady=5)
         desc_entry = ttk.Entry(dialog, width=50)

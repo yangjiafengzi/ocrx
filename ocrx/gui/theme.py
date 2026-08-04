@@ -186,7 +186,7 @@ def setup_styles(root: tk.Tk):
         "TNotebook.Tab",
         background="#E2E8F0",
         foreground=TEXT,
-        padding=(16, 6),
+        padding=(12, 4),
         font=(FONT_FAMILY, 9),
     )
     style.map(
@@ -226,13 +226,41 @@ def setup_styles(root: tk.Tk):
         thickness=12,
     )
 
-    # 滚动条：细窄、无箭头、现代扁平样式
+    # 滚动条：细窄、无箭头、现代扁平样式。
+    # 设计原则：轨道颜色与所在区域背景一致（视觉上“隐形”），
+    # 滑块颜色明显区别于轨道，悬停/按压时加深。
+    _scrollbar_layout = [
+        (
+            "Vertical.Scrollbar.trough",
+            {
+                "sticky": "ns",
+                "children": [
+                    ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "ns"}),
+                ],
+            },
+        )
+    ]
+    _scrollbar_layout_h = [
+        (
+            "Horizontal.Scrollbar.trough",
+            {
+                "sticky": "ew",
+                "children": [
+                    ("Horizontal.Scrollbar.thumb", {"expand": "1", "sticky": "ew"}),
+                ],
+            },
+        )
+    ]
+
+    # 默认滚动条：用于白色背景的文本框/表格，轨道融入白色背景，只露出滑块
     style.configure(
         "Vertical.TScrollbar",
-        background="#94A3B8",
-        troughcolor=BG,
-        bordercolor=BG,
-        arrowcolor=BG,
+        background="#94A3B8",  # 滑块
+        troughcolor=SURFACE,
+        bordercolor=SURFACE,
+        lightcolor=SURFACE,
+        darkcolor=SURFACE,
+        arrowcolor=SURFACE,
         relief="flat",
         borderwidth=0,
         width=10,
@@ -241,26 +269,35 @@ def setup_styles(root: tk.Tk):
         "Vertical.TScrollbar",
         background=[("active", "#64748B"), ("pressed", "#475569")],
     )
-    style.layout(
-        "Vertical.TScrollbar",
-        [
-            (
-                "Vertical.Scrollbar.trough",
-                {
-                    "sticky": "ns",
-                    "children": [
-                        ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "ns"}),
-                    ],
-                },
-            )
-        ],
-    )
+    style.layout("Vertical.TScrollbar", _scrollbar_layout)
+
+    # 页面背景（浅灰）滚动条：用于配置页画布
     style.configure(
-        "Horizontal.TScrollbar",
+        "Page.Vertical.TScrollbar",
         background="#94A3B8",
         troughcolor=BG,
         bordercolor=BG,
+        lightcolor=BG,
+        darkcolor=BG,
         arrowcolor=BG,
+        relief="flat",
+        borderwidth=0,
+        width=10,
+    )
+    style.map(
+        "Page.Vertical.TScrollbar",
+        background=[("active", "#64748B"), ("pressed", "#475569")],
+    )
+    style.layout("Page.Vertical.TScrollbar", _scrollbar_layout)
+
+    style.configure(
+        "Horizontal.TScrollbar",
+        background="#94A3B8",
+        troughcolor=SURFACE,
+        bordercolor=SURFACE,
+        lightcolor=SURFACE,
+        darkcolor=SURFACE,
+        arrowcolor=SURFACE,
         relief="flat",
         borderwidth=0,
         height=10,
@@ -269,37 +306,76 @@ def setup_styles(root: tk.Tk):
         "Horizontal.TScrollbar",
         background=[("active", "#64748B"), ("pressed", "#475569")],
     )
-    style.layout(
-        "Horizontal.TScrollbar",
-        [
-            (
-                "Horizontal.Scrollbar.trough",
-                {
-                    "sticky": "ew",
-                    "children": [
-                        ("Horizontal.Scrollbar.thumb", {"expand": "1", "sticky": "ew"}),
-                    ],
-                },
-            )
-        ],
+    style.layout("Horizontal.TScrollbar", _scrollbar_layout_h)
+
+    # 深色页面（运行日志）滚动条：轨道融入深色背景，滑块用中灰
+    style.configure(
+        "Dark.Vertical.TScrollbar",
+        background="#64748B",
+        troughcolor="#0F172A",
+        bordercolor="#0F172A",
+        lightcolor="#0F172A",
+        darkcolor="#0F172A",
+        arrowcolor="#0F172A",
+        relief="flat",
+        borderwidth=0,
+        width=10,
     )
+    style.map(
+        "Dark.Vertical.TScrollbar",
+        background=[("active", "#94A3B8"), ("pressed", "#94A3B8")],
+    )
+    style.layout("Dark.Vertical.TScrollbar", _scrollbar_layout)
 
 
-def apply_themed_scrollbar(text_widget: scrolledtext.ScrolledText) -> ttk.Scrollbar:
-    """把 ScrolledText 内置的原生滚动条替换为统一风格的 ttk 滚动条。"""
-    vbar = ttk.Scrollbar(text_widget, orient="vertical", command=text_widget.yview)
+def apply_themed_scrollbar(
+    text_widget: scrolledtext.ScrolledText,
+    scrollbar_style: str = "Vertical.TScrollbar",
+) -> ttk.Scrollbar:
+    """把 ScrolledText 内置的原生滚动条替换为统一风格的 ttk 滚动条。
+
+    滚动条按需显示：内容未超出可视区时隐藏，超出时自动出现。
+    """
+    frame = text_widget.frame
+    try:
+        # 让滚动条所在的内层 Frame 与文本框背景一致，避免轨道周围露出浅色边框
+        frame.configure(bg=text_widget.cget("bg"))
+    except tk.TclError:
+        pass
     try:
         text_widget.vbar.destroy()
     except tk.TclError:
         pass
+    vbar = ttk.Scrollbar(
+        frame,
+        orient="vertical",
+        command=text_widget.yview,
+        style=scrollbar_style,
+    )
     text_widget.vbar = vbar
-    vbar.grid(row=0, column=1, sticky="ns")
-    text_widget.configure(yscrollcommand=vbar.set)
+
+    def _sync_scrollbar(*args):
+        vbar.set(*args)
+        try:
+            first, last = float(args[0]), float(args[1])
+            if first <= 0.0 and last >= 1.0:
+                vbar.pack_forget()
+            else:
+                vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        except (ValueError, tk.TclError):
+            pass
+
+    text_widget.configure(yscrollcommand=_sync_scrollbar)
+    vbar.pack(side=tk.RIGHT, fill=tk.Y)
     return vbar
 
 
-def themed_scrolled_text(parent, **kwargs) -> scrolledtext.ScrolledText:
+def themed_scrolled_text(
+    parent,
+    scrollbar_style: str = "Vertical.TScrollbar",
+    **kwargs,
+) -> scrolledtext.ScrolledText:
     """创建带统一风格滚动条的 ScrolledText。"""
     widget = scrolledtext.ScrolledText(parent, **kwargs)
-    apply_themed_scrollbar(widget)
+    apply_themed_scrollbar(widget, scrollbar_style)
     return widget

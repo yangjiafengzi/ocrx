@@ -127,21 +127,21 @@ class MainWindow:
     def create_widgets(self):
         """创建所有界面组件"""
         main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
 
         # 页头
         header = ttk.Frame(main_frame, style="Header.TFrame")
-        header.pack(fill=tk.X, pady=(0, 10))
+        header.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(
             header,
             text="OCRX 智能文字识别",
             style="HeaderTitle.TLabel",
-        ).pack(side=tk.LEFT, padx=18, pady=(6, 0))
+        ).pack(side=tk.LEFT, padx=18, pady=(4, 0))
         ttk.Label(
             header,
             text=f"基于 AI 的批量 OCR 工具 · v{__version__}",
             style="HeaderSub.TLabel",
-        ).pack(side=tk.LEFT, padx=4, pady=(10, 0))
+        ).pack(side=tk.LEFT, padx=4, pady=(8, 0))
 
         # 创建 notebook 用于分页
         self.notebook = ttk.Notebook(main_frame)
@@ -185,7 +185,10 @@ class MainWindow:
         # 可滚动画布 + 纵向滚动条
         self.config_canvas = tk.Canvas(parent, bg=BG, highlightthickness=0, borderwidth=0)
         self.config_scrollbar = ttk.Scrollbar(
-            parent, orient="vertical", command=self.config_canvas.yview
+            parent,
+            orient="vertical",
+            command=self.config_canvas.yview,
+            style="Page.Vertical.TScrollbar",
         )
         self.config_canvas.configure(yscrollcommand=self.config_scrollbar.set)
         self.config_canvas.grid(row=0, column=0, sticky="nsew")
@@ -300,7 +303,7 @@ class MainWindow:
         self.prompt_text = themed_scrolled_text(
             prompt_frame,
             width=80,
-            height=4,
+            height=5,
             wrap=tk.WORD,
             font=("Microsoft YaHei UI", 10),
             bg="#FFFFFF",
@@ -376,6 +379,7 @@ class MainWindow:
 
         self.log_text = themed_scrolled_text(
             parent,
+            scrollbar_style="Dark.Vertical.TScrollbar",
             wrap=tk.WORD,
             width=120,
             height=40,
@@ -404,7 +408,7 @@ class MainWindow:
     def create_bottom_buttons(self, parent):
         """创建底部按钮"""
         button_frame = ttk.Frame(parent)
-        button_frame.pack(fill=tk.X, pady=(8, 2))
+        button_frame.pack(fill=tk.X, pady=(6, 0))
 
         ttk.Button(button_frame, text="识别并保存", style="Primary.TButton", command=self.start_ocr_and_save).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="识别并复制", style="Success.TButton", command=self.start_ocr_and_copy).pack(side=tk.LEFT, padx=5)

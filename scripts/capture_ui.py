@@ -61,10 +61,20 @@ def main():
     app.model_name_entry.insert(0, "gpt-4o")
     app.file_paths_entry.insert(0, "C:\\docs\\扫描件.pdf;C:\\docs\\笔记.png")
     app.output_dir_entry.insert(0, str(td / "output"))
-    app.example_library.add_example(str(sample), "这是一段示例识别结果文本。", "手写示例")
-    app._display_result("识别结果示例：\n\n# 标题\n\n这是一段由 AI 识别出的 Markdown 内容。")
+    for i in range(30):
+        app.example_library.add_example(
+            str(sample), f"示例 {i} 的识别文本内容，用于展示列表滚动效果。", f"标签 {i}"
+        )
+    result_lines = ["# 识别结果示例", ""]
+    for i in range(60):
+        result_lines.append(f"第 {i} 段内容：这是一段由 AI 识别出的 Markdown 文本，用于展示结果区滚动效果。")
+    app._display_result("\n".join(result_lines))
     app.logger.info("应用程序启动", "System")
     app.logger.info("处理服务初始化完成", "System")
+    for i in range(40):
+        app.logger.info(f"日志行 {i}：模拟运行日志内容，用于展示日志区滚动效果。", "System")
+    for i in range(15):
+        app.clipboard_history.add_record(f"剪贴板历史记录 {i} 的内容预览", success=True, method="tkinter")
     root.update_idletasks()
     root.update()
 
