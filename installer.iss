@@ -2,10 +2,10 @@
 ; 使用 Inno Setup 编译
 
 #define MyAppName "OCRX"
-#define MyAppVersion "2.1.0"
+#define MyAppVersion "2.2.0"
 #define MyAppPublisher "OCRX Team"
 #define MyAppURL "https://github.com/yangjiafengzi/ocrx"
-#define MyAppExeName "OCRX-2.1.0.exe"
+#define MyAppExeName "OCRX-2.2.0.exe"
 
 [Setup]
 ; 应用程序信息
@@ -23,7 +23,7 @@ DefaultGroupName={#MyAppName}
 
 ; 输出文件名
 OutputDir=installer
-OutputBaseFilename=OCRX_2.1.0_Setup
+OutputBaseFilename=OCRX_2.2.0_Setup
 
 ; 压缩设置
 Compression=lzma2

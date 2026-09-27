@@ -5,6 +5,26 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.2.0] - 2026-09-28
+
+### 新增
+
+- **向导式主界面**：配置 → 文件 → 提示词/少样本 → 执行四步工作流
+- **分层 GUI 架构**：`AppContext` + `views/*` + `controllers/*`，替换旧 handlers 层
+- **完整 GUI 端到端测试**：覆盖识别保存、识别复制、取消与预检失败（使用本地 Mock API 与微型生成夹具）
+
+### 改进
+
+- **界面重构**：采用 CustomTkinter 现代化控件与统一主题令牌
+- **性能**：进度回调线程安全并节流合并；剪贴板重试移出 UI 线程；结果预览截断
+- **稳定性**：修复启动时配置被空表单覆盖、预设切换错写、保存失败误报成功等问题
+- **打包**：PyInstaller 增加 `customtkinter` 收集配置
+
+### 变更
+
+- 移除 `ocrx/gui/handlers/` 处理器层；扩展点改为 views 与 controllers
+- 识别并复制仍限制最多 10 页；空提示词在执行前校验
+
 ## [2.1.0] - 2026-03-21
 
 ### 新增
