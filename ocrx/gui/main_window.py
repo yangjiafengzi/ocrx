@@ -57,6 +57,7 @@ class MainWindow:
         self._log_queue: queue.Queue = queue.Queue()
         self._closed = False
         self._pump_after_id: Optional[str] = None
+        self._wizard_ready = False
 
         self._build_shell()
         self._build_wizard()
@@ -135,7 +136,12 @@ class MainWindow:
         self.logs_view.build(self.secondary.tab(SECONDARY_TABS[2]))
 
     def _show_step(self, index: int) -> None:
-        self._collect_state()
+        # First show must load before collect: freshly built forms are empty and
+        # collecting them would wipe config/state loaded from disk (or injected
+        # by tests) before the fields are populated.
+        if self._wizard_ready:
+            self._collect_state()
+        self._wizard_ready = True
         self.current_step = index
         for i, step in enumerate(self.steps):
             if i == index:

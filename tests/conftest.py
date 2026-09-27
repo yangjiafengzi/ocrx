@@ -8,6 +8,8 @@ import fitz
 import pytest
 from PIL import Image
 
+from tests.mock_openai import MockOpenAIServer
+
 # 保证可以从仓库根目录导入 ocrx 包
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -50,3 +52,13 @@ def sample_pdf(tmp_path):
     doc.save(path)
     doc.close()
     return path
+
+
+@pytest.fixture
+def mock_openai_server():
+    """Local OpenAI-compatible mock; ``base_url`` ends with ``/v1``."""
+    server = MockOpenAIServer().start()
+    try:
+        yield server
+    finally:
+        server.stop()
