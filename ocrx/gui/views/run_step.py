@@ -15,12 +15,15 @@ class RunStep:
         self.actions = None
         self.save_btn = None
         self.copy_btn = None
+        self.copy_all_btn = None
         self.stop_btn = None
         self.progress = None
         self.status = None
         self.result = None
+        self._full_text = ""
         self._on_save = None
         self._on_copy = None
+        self._on_copy_all = None
         self._on_stop = None
 
     def build(self, parent):
@@ -32,6 +35,9 @@ class RunStep:
         self.copy_btn = ctk.CTkButton(
             self.actions, text="识别并复制", command=self._emit_copy
         )
+        self.copy_all_btn = ctk.CTkButton(
+            self.actions, text="复制全部", command=self._emit_copy_all
+        )
         self.stop_btn = ctk.CTkButton(
             self.actions,
             text="停止",
@@ -41,7 +47,7 @@ class RunStep:
         self.progress = ctk.CTkProgressBar(self.frame)
         self.status = ctk.CTkLabel(self.frame, text="就绪")
         self.result = ctk.CTkTextbox(self.frame, height=260)
-        for w in (self.save_btn, self.copy_btn, self.stop_btn):
+        for w in (self.save_btn, self.copy_btn, self.copy_all_btn, self.stop_btn):
             w.pack(side="left", padx=4)
         self.actions.pack(fill="x", padx=8, pady=8)
         self.progress.pack(fill="x", padx=8, pady=4)
@@ -68,6 +74,14 @@ class RunStep:
         self._on_copy = callback
 
     @property
+    def on_copy_all(self):
+        return self._on_copy_all
+
+    @on_copy_all.setter
+    def on_copy_all(self, callback):
+        self._on_copy_all = callback
+
+    @property
     def on_stop(self):
         return self._on_stop
 
@@ -81,6 +95,9 @@ class RunStep:
     def set_on_copy(self, callback) -> None:
         self.on_copy = callback
 
+    def set_on_copy_all(self, callback) -> None:
+        self.on_copy_all = callback
+
     def set_on_stop(self, callback) -> None:
         self.on_stop = callback
 
@@ -92,6 +109,10 @@ class RunStep:
         if self._on_copy is not None:
             self._on_copy()
 
+    def _emit_copy_all(self):
+        if self._on_copy_all is not None:
+            self._on_copy_all()
+
     def _emit_stop(self):
         if self._on_stop is not None:
             self._on_stop()
@@ -102,6 +123,7 @@ class RunStep:
         state = "disabled" if running else "normal"
         self.save_btn.configure(state=state)
         self.copy_btn.configure(state=state)
+        self.copy_all_btn.configure(state=state)
         self.stop_btn.configure(state="normal" if running else "disabled")
 
     def set_progress(self, current, total, percent, phase) -> None:
@@ -115,8 +137,13 @@ class RunStep:
             self.status.configure(text=text or "")
 
     def set_result(self, text: str) -> None:
+        self._full_text = text or ""
         self.result.delete("1.0", "end")
-        self.result.insert("1.0", (text or "")[:MAX_RESULT_CHARS])
+        self.result.insert("1.0", self._full_text[:MAX_RESULT_CHARS])
+
+    def get_full_text(self) -> str:
+        """完整结果文本（不受预览截断限制）。"""
+        return self._full_text
 
     # ---- 状态同步 ----
 

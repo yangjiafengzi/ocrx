@@ -67,12 +67,21 @@ class PromptStep:
         top = ctk.CTkFrame(self.frame)
         top.pack(fill="x", padx=8, pady=4)
         ctk.CTkLabel(top, text="预设").pack(side="left", padx=4)
-        self.preset = ctk.CTkComboBox(top, values=[""], width=180, state="readonly")
+        self.preset = ctk.CTkComboBox(
+            top,
+            values=[""],
+            width=180,
+            state="readonly",
+            command=self._on_preset_selected,
+        )
         self.preset.pack(side="left", padx=4)
         ctk.CTkButton(top, text="保存", width=64, command=self._on_save).pack(
             side="left", padx=4
         )
         ctk.CTkButton(top, text="另存为", width=64, command=self._on_save_new).pack(
+            side="left", padx=4
+        )
+        ctk.CTkButton(top, text="重命名", width=64, command=self._on_rename).pack(
             side="left", padx=4
         )
         ctk.CTkButton(top, text="删除", width=64, command=self._on_delete).pack(
@@ -177,6 +186,14 @@ class PromptStep:
             return False
         return bool(self.prompt_controller.update(name, text))
 
+    def rename(self, old: str, new: str) -> bool:
+        if self.prompt_controller is None:
+            return False
+        ok = bool(self.prompt_controller.rename(old, new))
+        if ok:
+            self._refresh_from_config(select_name=new, keep_text=True)
+        return ok
+
     def delete(self, name: str) -> bool:
         if self.prompt_controller is None:
             return False
@@ -196,6 +213,18 @@ class PromptStep:
     def _current_text(self) -> str:
         return self.textbox.get("1.0", "end-1c")
 
+    def _on_preset_selected(self, name: str) -> None:
+        """下拉里选中预设时，把该预设正文载入编辑框。"""
+        self._load_preset_body(name)
+
+    def _load_preset_body(self, name: str) -> None:
+        config = self._resolve_config()
+        if config is None or self.textbox is None:
+            return
+        templates = config.get_prompt_templates()
+        self.textbox.delete("1.0", "end")
+        self.textbox.insert("1.0", templates.get(name, ""))
+
     def _on_save(self):
         name = self.preset.get().strip()
         ok = self.save(name, self._current_text())
@@ -207,6 +236,20 @@ class PromptStep:
             return
         ok = self.save_new(name.strip(), self._current_text())
         self.status.configure(text="已保存" if ok else "保存失败")
+
+    def _on_rename(self):
+        old = self.preset.get().strip()
+        if not old:
+            self.status.configure(text="重命名失败")
+            return
+        new = simpledialog.askstring("重命名", "请输入新的提示词预设名称:", initialvalue=old)
+        if new is None:
+            return
+        new = new.strip()
+        if not new or new == old:
+            return
+        ok = self.rename(old, new)
+        self.status.configure(text="已重命名" if ok else "重命名失败")
 
     def _on_delete(self):
         name = self.preset.get().strip()
@@ -222,11 +265,14 @@ class PromptStep:
             return getattr(self.prompt_controller, "config", None)
         return None
 
-    def _refresh_from_config(self, select_name: str | None = None) -> None:
+    def _refresh_from_config(
+        self, select_name: str | None = None, keep_text: bool = False
+    ) -> None:
         """让下拉与正文与配置里的模板保持一致。"""
         config = self._resolve_config()
         if config is None or self.preset is None or self.textbox is None:
             return
+        current_text = self._current_text() if keep_text else ""
         templates = config.get_prompt_templates()
         names = list(templates.keys())
         self.preset.configure(values=names or [""])
@@ -237,7 +283,10 @@ class PromptStep:
             if current not in names:
                 self.preset.set(names[0] if names else "")
         self.textbox.delete("1.0", "end")
-        self.textbox.insert("1.0", templates.get(self.preset.get(), ""))
+        if keep_text:
+            self.textbox.insert("1.0", current_text)
+        else:
+            self.textbox.insert("1.0", templates.get(self.preset.get(), ""))
 
     def load_state(self, state, config) -> None:
         if config is not None:

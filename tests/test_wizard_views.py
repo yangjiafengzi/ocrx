@@ -406,3 +406,143 @@ def test_prompt_step_roundtrip_custom_preset_name_and_edited_body(tk_root, tmp_p
     restored.collect(out)
     assert out.prompt_preset_name == "custom-preset"
     assert out.prompt_text == edited
+
+
+def test_prompt_step_combo_selection_loads_preset_body(tk_root, tmp_path):
+    """用户在下拉里选预设时，正文必须切到该预设的模板内容。"""
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    names = list(DEFAULT_PROMPT_TEMPLATES.keys())
+    first, second = names[0], names[1]
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    assert step.preset.cget("command") is not None
+
+    step.preset.set(first)
+    step.textbox.delete("1.0", "end")
+    step.textbox.insert("1.0", "only first is edited")
+
+    # 模拟用户从下拉选择另一个预设（走 combo 的 command 回调）
+    step.preset._dropdown_callback(second)
+    assert step.preset.get() == second
+    assert step.textbox.get("1.0", "end-1c") == DEFAULT_PROMPT_TEMPLATES[second]
+
+    step.preset._dropdown_callback(first)
+    assert step.textbox.get("1.0", "end-1c") == DEFAULT_PROMPT_TEMPLATES[first]
+
+
+def test_prompt_step_save_updates_only_selected_preset(tk_root, tmp_path):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    names = list(DEFAULT_PROMPT_TEMPLATES.keys())
+    first, second = names[0], names[1]
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+
+    step.preset._dropdown_callback(first)
+    step.textbox.delete("1.0", "end")
+    step.textbox.insert("1.0", "only first changes")
+    step._on_save()
+
+    templates = cfg.get_prompt_templates()
+    assert templates[first] == "only first changes"
+    assert templates[second] == DEFAULT_PROMPT_TEMPLATES[second]
+    for name, body in DEFAULT_PROMPT_TEMPLATES.items():
+        if name != first:
+            assert templates[name] == body
+
+
+def test_prompt_step_rename_uses_simpledialog(tk_root, tmp_path, monkeypatch):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    cfg.add_prompt_template("旧名字", "正文")
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    step.preset.set("旧名字")
+
+    monkeypatch.setattr(
+        "ocrx.gui.views.prompt_step.simpledialog.askstring",
+        lambda *args, **kwargs: "新名字",
+    )
+    step._on_rename()
+
+    templates = cfg.get_prompt_templates()
+    assert "旧名字" not in templates
+    assert templates["新名字"] == "正文"
+    assert step.preset.get() == "新名字"
+    assert "新名字" in list(step.preset.cget("values"))
+    assert "已重命名" in step.status.cget("text")
+
+
+def test_prompt_step_rename_keeps_unsaved_edit(tk_root, tmp_path, monkeypatch):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    cfg.add_prompt_template("原名", "模板正文")
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    step.preset.set("原名")
+    step.textbox.delete("1.0", "end")
+    step.textbox.insert("1.0", "未保存的编辑")
+
+    monkeypatch.setattr(
+        "ocrx.gui.views.prompt_step.simpledialog.askstring",
+        lambda *args, **kwargs: "新名",
+    )
+    step._on_rename()
+    assert step.preset.get() == "新名"
+    assert step.textbox.get("1.0", "end-1c") == "未保存的编辑"
+
+
+def test_prompt_step_rename_rejected_for_default_preset(tk_root, tmp_path, monkeypatch):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    default_name = list(DEFAULT_PROMPT_TEMPLATES.keys())[0]
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    step.preset.set(default_name)
+
+    monkeypatch.setattr(
+        "ocrx.gui.views.prompt_step.simpledialog.askstring",
+        lambda *args, **kwargs: "改名后",
+    )
+    step._on_rename()
+    assert default_name in cfg.get_prompt_templates()
+    assert "改名后" not in cfg.get_prompt_templates()
+    assert "重命名失败" in step.status.cget("text")
+
+
+def test_logs_view_trim_deletes_head_lines(tk_root):
+    from ocrx.gui.views.logs_view import MAX_LOG_LINES, LogsView
+
+    view = LogsView()
+    view.build(tk_root)
+    total = MAX_LOG_LINES + 5
+    for i in range(total):
+        view.append(f"line-{i}")
+    text = view.textbox.get("1.0", "end-1c")
+    lines = [ln for ln in text.splitlines() if ln]
+    assert len(lines) == MAX_LOG_LINES
+    assert lines[0] == "line-5"
+    assert lines[-1] == f"line-{total - 1}"
+
+
+def test_run_step_copy_all_uses_full_text(tk_root):
+    step = RunStep()
+    step.build(tk_root)
+    seen = []
+    step.set_on_copy_all(lambda: seen.append(step.get_full_text()))
+    full = "x" * 6000
+    step.set_result(full)
+    assert len(step.result.get("1.0", "end-1c")) == 5000
+    step.copy_all_btn.invoke()
+    assert seen == [full]
+
+    step.set_running(True)
+    assert str(step.copy_all_btn.cget("state")) == "disabled"
+    step.set_running(False)
+    assert str(step.copy_all_btn.cget("state")) == "normal"

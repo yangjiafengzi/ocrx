@@ -82,6 +82,7 @@ def make_example_ui(tmp_path):
     ui.library = library
     ui.selected_examples = []
     ui.on_selection_change = None
+    ui.on_data_change = None
     ui.tree = FakeTree()
     ui.stats_label = FakeLabel()
     return library, ui

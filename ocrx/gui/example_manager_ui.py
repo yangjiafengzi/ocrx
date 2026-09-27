@@ -23,6 +23,8 @@ from .theme import (
 
 class ExampleManagerUI:
     """示例库管理界面"""
+
+    on_data_change: Optional[Callable[[], None]] = None
     
     def __init__(self, parent: tk.Widget, example_library: ExampleLibrary):
         """
@@ -40,6 +42,7 @@ class ExampleManagerUI:
         
         # 回调函数
         self.on_selection_change: Optional[Callable[[List[str]], None]] = None
+        self.on_data_change: Optional[Callable[[], None]] = None
         
         # 创建界面
         self._create_ui()
@@ -328,9 +331,9 @@ class ExampleManagerUI:
         # 更新统计
         self.stats_label.config(text=f"共 {len(examples)} 个示例")
         
-        # 触发回调
-        if self.on_selection_change:
-            self.on_selection_change(self.selected_examples.copy())
+        # 列表内容变化（增删改/刷新）后通知外部同步少样本列表
+        if self.on_data_change:
+            self.on_data_change()
 
     def _on_row_double_click(self, event):
         """双击示例行：打开预览与编辑框。"""
@@ -426,6 +429,10 @@ class ExampleManagerUI:
     def set_selection_change_callback(self, callback: Callable[[List[str]], None]):
         """设置选择变化回调"""
         self.on_selection_change = callback
+
+    def set_data_change_callback(self, callback: Callable[[], None]):
+        """设置示例库数据变更回调（列表刷新后触发）"""
+        self.on_data_change = callback
     
     def clear_selection(self):
         """清空选择"""

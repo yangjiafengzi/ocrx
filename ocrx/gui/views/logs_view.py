@@ -46,9 +46,12 @@ class LogsView:
 
     def _trim(self) -> None:
         """行数超限时丢弃头部，避免文本框无限膨胀。"""
-        text = self.textbox.get("1.0", "end-1c")
-        lines = text.splitlines()
-        if len(lines) > MAX_LOG_LINES:
-            kept = lines[-MAX_LOG_LINES:]
-            self.textbox.delete("1.0", "end")
-            self.textbox.insert("1.0", "\n".join(kept) + "\n")
+        if self.textbox is None:
+            return
+        # CTkTextbox 未暴露 count()，取其底层 tk.Text 统计行数
+        inner = getattr(self.textbox, "_textbox", self.textbox)
+        counted = inner.count("1.0", "end-1c", "lines")
+        line_count = int(counted[0]) if counted else 0
+        if line_count > MAX_LOG_LINES:
+            excess = line_count - MAX_LOG_LINES
+            self.textbox.delete("1.0", f"{excess + 1}.0")

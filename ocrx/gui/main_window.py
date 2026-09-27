@@ -57,7 +57,6 @@ class MainWindow:
         self._log_queue: queue.Queue = queue.Queue()
         self._closed = False
         self._pump_after_id: Optional[str] = None
-        self._main_ident = threading.get_ident()
 
         self._build_shell()
         self._build_wizard()
@@ -112,6 +111,7 @@ class MainWindow:
 
         self.run_step.set_on_save(self.run_save_now)
         self.run_step.set_on_copy(self.run_copy_now)
+        self.run_step.set_on_copy_all(self.copy_full_result)
         self.run_step.set_on_stop(self.stop_now)
         self.run_step.set_running(False)  # 空闲：启用保存/复制，禁用停止
         self._show_step(0)
@@ -124,6 +124,7 @@ class MainWindow:
 
         self.examples_view = ExamplesView(self.context.examples)
         self.examples_view.build(self.secondary.tab(SECONDARY_TABS[0]))
+        self.examples_view.set_on_data_change(self._on_examples_changed)
 
         self.clipboard_view = ClipboardView(self.context.clipboard)
         self.clipboard_view.build(self.secondary.tab(SECONDARY_TABS[1]))
@@ -138,6 +139,8 @@ class MainWindow:
         self.current_step = index
         for i, step in enumerate(self.steps):
             if i == index:
+                if step is self.prompt_step:
+                    self.prompt_step.refresh_examples()
                 step.frame.tkraise()
                 step.load_state(self.session, self.context.config)
 
@@ -191,6 +194,21 @@ class MainWindow:
     def run_copy_now(self) -> None:
         """识别并复制（按钮与测试助手共用同一代码路径）。"""
         self._start_job("copy")
+
+    def copy_full_result(self) -> None:
+        """复制完整结果（自动复制失败后的手动兜底）。"""
+        content = self.session.last_result or self.run_step.get_full_text()
+        if not content:
+            self.run_step.set_status("没有可复制的结果")
+            return
+        ok = False
+        try:
+            ok = bool(self.context.clipboard.copy_to_clipboard(content))
+        except Exception:
+            ok = False
+        self.run_step.set_status("已复制到剪贴板" if ok else "复制到剪贴板失败")
+        if ok:
+            self.clipboard_view.refresh()
 
     def _start_job(self, mode: str) -> None:
         if self._running:
@@ -374,6 +392,13 @@ class MainWindow:
         return f"处理完成：成功 {ok_count}/{len(results)} 个文件"
 
     # -- secondary view intents ---------------------------------------
+
+    def _on_examples_changed(self) -> None:
+        """示例库增删改后刷新提示词页的少样本列表。"""
+        try:
+            self.prompt_step.refresh_examples()
+        except Exception:
+            pass
 
     def _copy_history_entry(self, content) -> None:
         if not content:

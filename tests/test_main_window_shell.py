@@ -14,6 +14,7 @@ import pytest
 from ocrx.example_library import ExampleLibrary
 from ocrx.gui.app_context import AppContext
 from ocrx.gui.main_window import MainWindow
+from ocrx.gui.session_state import SessionState
 
 
 @pytest.fixture
@@ -238,6 +239,31 @@ def test_copy_failure_shows_error_and_unlocks(win, tk_root, tmp_path):
     assert str(win.run_step.copy_btn.cget("state")) == "normal"
 
 
+def test_copy_failure_path_offers_copy_all(win, tk_root, tmp_path):
+    """自动复制失败后，复制全部按钮可带走完整结果。"""
+    service = _prepare_ready_to_run(win, tmp_path)
+    copied = []
+    auto = {"n": 0}
+
+    def fake_copy(content):
+        auto["n"] += 1
+        copied.append(content)
+        return auto["n"] > 1  # 自动复制失败，手动复制成功
+
+    win.context.clipboard.copy_to_clipboard = fake_copy
+    full = "完整结果" + "x" * 6000
+    service.copy_result = (True, full)
+
+    win.run_copy_now()
+    assert win.wait_idle(timeout=10.0) is True
+    assert "自动复制失败" in win.run_step.status.cget("text")
+
+    win.run_step.copy_all_btn.invoke()
+    assert copied[-1] == full
+    assert copied[-1] == win.session.last_result
+    assert "已复制到剪贴板" in win.run_step.status.cget("text")
+
+
 def test_stop_now_requests_cancel(win, tk_root, tmp_path):
     service = _prepare_ready_to_run(win, tmp_path)
     win._start_job("save")
@@ -259,6 +285,29 @@ def test_example_selection_feeds_load_example_images(win, tk_root, tmp_path, sam
     sent = service.calls[0]["example_images"]
     assert sent and sent[0][0] == "示例文本"
     assert sent[0][1]
+
+
+def test_examples_change_refreshes_prompt_step_few_shot(win, sample_png):
+    """示例库增删改后提示词页少样本列表必须能选中新 id。"""
+    example = win.context.examples.add_example(str(sample_png), "示例文本", "描述")
+    assert example.id not in win.prompt_step.example_checks
+
+    # ExampleManagerUI 在增删改后调用 refresh_list → data change → 同步
+    win.examples_view.refresh()
+    assert example.id in win.prompt_step.example_checks
+
+    win.prompt_step.set_selected_example_ids([example.id])
+    assert win.prompt_step.get_selected_example_ids() == [example.id]
+
+
+def test_prompt_tab_switch_refreshes_few_shot_list(win, sample_png):
+    example = win.context.examples.add_example(str(sample_png), "示例文本", "描述")
+    win.wizard.set_current(2)
+    assert example.id in win.prompt_step.example_checks
+    win.prompt_step.set_selected_example_ids([example.id])
+    out = SessionState()
+    win.prompt_step.collect(out)
+    assert out.selected_example_ids == [example.id]
 
 
 def test_progress_marshalled_to_run_step(win, tk_root):
