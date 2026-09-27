@@ -29,7 +29,7 @@ echo     This may take 5-10 minutes, please wait...
 REM 避免 PATH 中其他软件（如 WinGet 安装的 Poppler）提供的 libexpat.dll 污染打包结果
 set "PATH=%PATH:;C:\Users\DHQ\AppData\Local\Microsoft\WinGet\Packages\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe\poppler-24.08.0\Library\bin=;%"
 
-python -m PyInstaller --name="OCRX-2.1.0" --windowed --onefile --icon=assets\icon.ico --add-data="ocrx;ocrx" --add-data="assets;assets" --additional-hooks-dir=. --hidden-import=tkinter --hidden-import=PIL --hidden-import=PIL._imaging --hidden-import=PIL._imagingtk --hidden-import=PIL._tkinter_finder --hidden-import=fitz --hidden-import=fitz.fitz --hidden-import=PyMuPDF --hidden-import=openai --collect-all=fitz --collect-all=PyMuPDF --collect-all=openai --copy-metadata=PyMuPDF --clean --noconfirm main.py
+python -m PyInstaller --name="OCRX-2.1.0" --windowed --onefile --icon=assets\icon.ico --add-data="ocrx;ocrx" --add-data="assets;assets" --additional-hooks-dir=. --hidden-import=tkinter --hidden-import=customtkinter --hidden-import=PIL --hidden-import=PIL._imaging --hidden-import=PIL._imagingtk --hidden-import=PIL._tkinter_finder --hidden-import=fitz --hidden-import=fitz.fitz --hidden-import=PyMuPDF --hidden-import=openai --collect-all=customtkinter --collect-all=fitz --collect-all=PyMuPDF --collect-all=openai --copy-metadata=PyMuPDF --clean --noconfirm main.py
 
 if errorlevel 1 (
     echo.
