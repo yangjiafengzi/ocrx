@@ -124,7 +124,6 @@ class MainWindow:
 
         self.examples_view = ExamplesView(self.context.examples)
         self.examples_view.build(self.secondary.tab(SECONDARY_TABS[0]))
-        self.examples_view.set_on_selection_change(self._on_example_selection)
 
         self.clipboard_view = ClipboardView(self.context.clipboard)
         self.clipboard_view.build(self.secondary.tab(SECONDARY_TABS[1]))
@@ -202,7 +201,7 @@ class MainWindow:
         page_range = self.session.page_range
         prompt = self.session.prompt_text
 
-        errors = validate_preflight(config, file_paths, page_range)
+        errors = validate_preflight(config, file_paths, page_range, prompt)
         if errors:
             self._show_run_error("\n".join(errors))
             return
@@ -375,14 +374,6 @@ class MainWindow:
         return f"处理完成：成功 {ok_count}/{len(results)} 个文件"
 
     # -- secondary view intents ---------------------------------------
-
-    def _on_example_selection(self, selected_ids) -> None:
-        try:
-            self.context.logger.debug(
-                f"示例库选择变化：{len(selected_ids)} 个", "FewShot"
-            )
-        except Exception:
-            pass
 
     def _copy_history_entry(self, content) -> None:
         if not content:

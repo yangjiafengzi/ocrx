@@ -292,3 +292,51 @@ def test_run_failure_keeps_window_alive(win, tk_root, tmp_path):
     assert win.wait_idle(timeout=10.0) is True
     assert tk_root.winfo_exists()
     assert len(service.calls) == 1
+
+
+def test_empty_prompt_rejected_before_job_start(win, tk_root, tmp_path):
+    """Empty prompt errors 请填写提示词 and never reaches the service."""
+    service = _prepare_ready_to_run(win, tmp_path)
+    win.prompt_step.textbox.delete("1.0", "end")
+
+    win.run_save_now()
+    assert win.wait_idle(timeout=10.0) is True
+    win.run_copy_now()
+    assert win.wait_idle(timeout=10.0) is True
+
+    assert service.calls == []
+    assert win.run_step.status.cget("text") == "请填写提示词"
+    assert "请填写提示词" in win.run_step.result.get("1.0", "end-1c")
+    assert str(win.run_step.save_btn.cget("state")) == "normal"
+    assert str(win.run_step.copy_btn.cget("state")) == "normal"
+    assert win._running is False
+
+
+def test_copy_run_rejects_batch_over_page_limit(win, tk_root, tmp_path):
+    """run_copy_now refuses copy runs above the 10-page cap (product guard)."""
+    service = _prepare_ready_to_run(win, tmp_path)
+    paths = [str(tmp_path / f"p{i}.png") for i in range(11)]
+    win.files_step._paths = paths
+    win.files_step._refresh_listbox()
+
+    win.run_copy_now()
+    assert win.wait_idle(timeout=10.0) is True
+
+    shown = win.run_step.status.cget("text") + win.run_step.result.get("1.0", "end-1c")
+    assert service.calls == []
+    assert "识别并保存" in shown
+    assert "页面范围" in shown
+    assert "10" in shown
+    assert str(win.run_step.copy_btn.cget("state")) == "normal"
+
+
+def test_copy_run_allows_batch_at_page_limit(win, tk_root, tmp_path):
+    service = _prepare_ready_to_run(win, tmp_path)
+    win.files_step._paths = [str(tmp_path / f"p{i}.png") for i in range(10)]
+    win.files_step._refresh_listbox()
+
+    win.run_copy_now()
+    assert win.wait_idle(timeout=10.0) is True
+
+    assert service.calls and service.calls[0]["mode"] == "copy"
+    assert len(service.calls[0]["file_paths"]) == 10

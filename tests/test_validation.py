@@ -2,7 +2,11 @@
 """Preflight validation helpers unit tests."""
 
 from ocrx.gui.validation import (
+    COPY_MAX_PAGES,
+    ERR_EMPTY_PROMPT,
     SUPPORTED_SUFFIXES,
+    copy_page_limit_error,
+    count_run_pages,
     parse_page_range,
     parse_page_range_tokens,
     validate_preflight,
@@ -157,3 +161,108 @@ def test_parse_page_range_tokens_empty_contract():
 def test_parse_page_range_empty_segments_mean_all_pages():
     assert parse_page_range(",", 3) == [1, 2, 3]
     assert parse_page_range("1,,2,", 5) == [1, 2]
+
+
+# -- copy page cap (COPY_MAX_PAGES product guard) --
+
+
+def test_copy_max_pages_is_ten():
+    assert COPY_MAX_PAGES == 10
+
+
+def test_count_run_pages_images_count_one_each():
+    pages = count_run_pages(["a.png", "b.jpg", "c.gif"], "", lambda p: 99)
+    assert pages == 3
+
+
+def test_count_run_pages_pdf_uses_page_count():
+    counts = {"doc.pdf": 7}
+    pages = count_run_pages(["doc.pdf"], "", counts.__getitem__)
+    assert pages == 7
+
+
+def test_count_run_pages_unreadable_pdf_counts_one():
+    def boom(path):
+        raise RuntimeError("cannot open")
+
+    assert count_run_pages(["doc.pdf"], "", boom) == 1
+
+
+def test_count_run_pages_range_caps_pdf_pages():
+    counts = {"doc.pdf": 20}
+    assert count_run_pages(["doc.pdf"], "1-5", counts.__getitem__) == 5
+    assert count_run_pages(["doc.pdf"], "1,3,5", counts.__getitem__) == 3
+
+
+def test_count_run_pages_range_applies_per_pdf():
+    # The service feeds the same range to every PDF, so the cap estimate does too.
+    counts = {"a.pdf": 20, "b.pdf": 20}
+    assert count_run_pages(["a.pdf", "b.pdf"], "1-3", counts.__getitem__) == 6
+
+
+def test_count_run_pages_images_ignore_range():
+    # ProcessingService ignores page ranges for plain images (always 1 page).
+    assert count_run_pages(["a.png", "b.png"], "1-1", lambda p: 1) == 2
+
+
+def test_count_run_pages_range_beyond_pdf_end_selects_nothing():
+    counts = {"doc.pdf": 2}
+    assert count_run_pages(["doc.pdf"], "5-8", counts.__getitem__) == 0
+
+
+def test_count_run_pages_mixed_files():
+    counts = {"doc.pdf": 20}
+    pages = count_run_pages(["doc.pdf", "a.png"], "1-4", counts.__getitem__)
+    assert pages == 5
+
+
+def test_copy_page_limit_error_mentions_save_mode_and_page_range():
+    msg = copy_page_limit_error(12)
+    assert "识别并保存" in msg
+    assert "页面范围" in msg
+    assert str(COPY_MAX_PAGES) in msg
+    assert "12" in msg
+
+
+# -- empty prompt product guard --
+
+
+def test_validate_preflight_rejects_empty_prompt():
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.png"],
+        "",
+        "",
+    )
+    assert errors == [ERR_EMPTY_PROMPT]
+
+
+def test_validate_preflight_rejects_whitespace_prompt():
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.png"],
+        "",
+        "   ",
+    )
+    assert ERR_EMPTY_PROMPT in errors
+    assert ERR_EMPTY_PROMPT == "请填写提示词"
+
+
+def test_validate_preflight_accepts_nonempty_prompt():
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.png"],
+        "",
+        "识别文字",
+    )
+    assert errors == []
+
+
+def test_validate_preflight_prompt_none_skips_check():
+    # Back-compat: callers that do not pass a prompt keep the old contract.
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.png"],
+        "",
+    )
+    assert errors == []

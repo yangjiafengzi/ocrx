@@ -3,7 +3,7 @@
 
 from ocrx.gui.controllers.copy_controller import CopyController
 from ocrx.gui.controllers.save_controller import SaveController, SaveResult
-from ocrx.gui.validation import ERR_NO_FILES, validate_preflight
+from ocrx.gui.validation import ERR_EMPTY_PROMPT, ERR_NO_FILES, validate_preflight
 
 
 class FakeService:
@@ -150,3 +150,22 @@ def test_save_controller_error_text_matches_copy_controller():
     _, copy_error = copy.run(["a.png"], "p", "", None, config=bad_config)
     assert preflight.error == copy_error
     assert preflight.error
+
+
+def test_save_controller_rejects_empty_prompt():
+    service = FakeService()
+    ctrl = SaveController(service, logger=None)
+    for bad in ("", "   ", "\n\t"):
+        result = ctrl.run(["a.png"], bad, "", None)
+        assert result.ok is False
+        assert result.results == {}
+        assert result.error == ERR_EMPTY_PROMPT == "请填写提示词"
+    assert service.calls == []
+
+
+def test_save_controller_empty_prompt_matches_copy_controller():
+    save = SaveController(FakeService(), logger=None)
+    copy = CopyController(FakeService(), logger=None)
+    save_result = save.run(["a.png"], "", "", None)
+    _, copy_error = copy.run(["a.png"], "", "", None)
+    assert save_result.error == copy_error == ERR_EMPTY_PROMPT

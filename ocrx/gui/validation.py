@@ -8,11 +8,19 @@ consolidated later.
 """
 
 from pathlib import Path
+from typing import Callable
 
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
 # Message shown when the run starts with no input files selected.
 ERR_NO_FILES = "请至少选择一个文件"
+
+# Message shown when the run starts with a blank prompt.
+ERR_EMPTY_PROMPT = "请填写提示词"
+
+# Copy mode is a clipboard workflow: refuse runs above this page budget and
+# steer the user to save mode or an explicit page range instead.
+COPY_MAX_PAGES = 10
 
 # Upper bound on how many page numbers a single input may expand to. Keeps the
 # validity path from materializing absurd ranges like "1-99999999".
@@ -90,8 +98,54 @@ def parse_page_range(page_range: str, total_pages: int) -> list[int] | None:
     return ordered
 
 
-def validate_preflight(config: dict, file_paths: list[str], page_range: str) -> list[str]:
+def count_run_pages(
+    file_paths: list[str],
+    page_range: str,
+    get_pdf_page_count: Callable[[str], int],
+) -> int:
+    """Estimate how many pages a run would process (copy-mode cap check).
+
+    Mirrors ``ProcessingService._prepare_images``: page ranges select a subset
+    of PDF pages, while image files always contribute exactly one page (the
+    service ignores page ranges for images). Unreadable PDFs count as one page,
+    matching the old CopyHandler fallback, so a broken file cannot mask a run
+    that is over budget.
+    """
+    tokens = parse_page_range_tokens(page_range or "")
+    total = 0
+    for file_path in file_paths:
+        if Path(file_path).suffix.lower() == ".pdf":
+            try:
+                page_count = int(get_pdf_page_count(file_path))
+            except Exception:
+                page_count = 1
+            if tokens:
+                page_count = sum(1 for page in tokens if page <= page_count)
+            total += page_count
+        else:
+            total += 1
+    return total
+
+
+def copy_page_limit_error(total_pages: int) -> str:
+    """Chinese error for copy runs above :data:`COPY_MAX_PAGES` pages."""
+    return (
+        f"识别并复制模式最多支持 {COPY_MAX_PAGES} 页，当前共 {total_pages} 页。\n"
+        f"建议：\n"
+        f"1. 使用「识别并保存」模式处理大文档\n"
+        f"2. 或使用页面范围指定不超过 {COPY_MAX_PAGES} 页"
+    )
+
+
+def validate_preflight(
+    config: dict,
+    file_paths: list[str],
+    page_range: str,
+    prompt: str | None = None,
+) -> list[str]:
     errors: list[str] = []
+    if prompt is not None and not prompt.strip():
+        errors.append(ERR_EMPTY_PROMPT)
     if not (config.get("API_KEY") or "").strip():
         errors.append("请填写 API Key")
     if not (config.get("BASE_URL") or "").strip():

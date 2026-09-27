@@ -10,7 +10,7 @@ failed.
 
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from ..validation import ERR_NO_FILES, validate_preflight
+from ..validation import ERR_EMPTY_PROMPT, ERR_NO_FILES, validate_preflight
 
 
 class SaveResult(NamedTuple):
@@ -43,8 +43,10 @@ class SaveController:
     ) -> SaveResult:
         if not file_paths:
             return SaveResult(False, {}, ERR_NO_FILES)
+        if not (prompt or "").strip():
+            return SaveResult(False, {}, ERR_EMPTY_PROMPT)
         if config is not None:
-            errors = validate_preflight(config, file_paths, page_range)
+            errors = validate_preflight(config, file_paths, page_range, prompt)
             if errors:
                 return SaveResult(False, {}, "\n".join(errors))
         try:
