@@ -13,16 +13,26 @@ class LogsView:
     def __init__(self):
         self.frame = None
         self.textbox = None
+        self.vbar = None
 
     def build(self, parent):
         self.frame = ctk.CTkFrame(parent)
+        self.frame.pack(fill="both", expand=True)
         bar = ctk.CTkFrame(self.frame)
         bar.pack(fill="x", padx=6, pady=4)
         ctk.CTkButton(bar, text="清空", width=70, command=self.clear).pack(
             side="left", padx=4
         )
-        self.textbox = ctk.CTkTextbox(self.frame, height=140)
-        self.textbox.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        body = ctk.CTkFrame(self.frame, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(0, weight=1)
+        self.textbox = ctk.CTkTextbox(body, height=100)
+        self.textbox.grid(row=0, column=0, sticky="nsew")
+        # 常显纵向滚动条：内容溢出时可拖，不依赖悬停
+        self.vbar = ctk.CTkScrollbar(body, command=self.textbox.yview)
+        self.vbar.grid(row=0, column=1, sticky="ns")
+        self.textbox.configure(yscrollcommand=self.vbar.set)
         return self.frame
 
     def append(self, entry) -> None:

@@ -83,8 +83,14 @@ class MainWindow:
         self.root.title(f"OCRX-智能文字识别 v{__version__}")
         self.root.geometry("1100x820")
         self.root.minsize(900, 680)
+        # grid 分配垂直空间：小窗口时次要页签仍有足够高度，大窗口时随窗口伸展
+        self.root.grid_rowconfigure(0, weight=0)
+        self.root.grid_rowconfigure(1, weight=0)
+        self.root.grid_rowconfigure(2, weight=3)
+        self.root.grid_rowconfigure(3, weight=2)
+        self.root.grid_columnconfigure(0, weight=1)
         header = ctk.CTkFrame(self.root, fg_color="transparent")
-        header.pack(fill="x", padx=12, pady=(8, 0))
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 0))
         ctk.CTkLabel(
             header, text=f"OCRX 智能文字识别  ·  v{__version__}"
         ).pack(side="left", padx=4)
@@ -96,9 +102,9 @@ class MainWindow:
         self.wizard = WizardNav(
             self.root, STEP_TITLES, on_change=self._show_step
         )
-        self.wizard.pack(fill="x", padx=12, pady=8)
+        self.wizard.frame.grid(row=1, column=0, sticky="ew", padx=12, pady=8)
         self.container = ctk.CTkFrame(self.root)
-        self.container.pack(fill="both", expand=True, padx=12, pady=4)
+        self.container.grid(row=2, column=0, sticky="nsew", padx=12, pady=4)
         self.container.grid_rowconfigure(0, weight=1)
         self.container.grid_columnconfigure(0, weight=1)
 
@@ -121,10 +127,14 @@ class MainWindow:
         self._show_step(0)
 
     def _build_secondary(self) -> None:
-        self.secondary = ctk.CTkTabview(self.root, height=230)
-        self.secondary.pack(fill="x", padx=12, pady=(0, 8))
+        # 次要页签与主向导共享高度：去掉固定 height，小窗口不再被压成一条
+        self.secondary = ctk.CTkTabview(self.root)
+        self.secondary.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 8))
         for title in SECONDARY_TABS:
             self.secondary.add(title)
+            tab = self.secondary.tab(title)
+            tab.grid_rowconfigure(0, weight=1)
+            tab.grid_columnconfigure(0, weight=1)
 
         self.examples_view = ExamplesView(self.context.examples)
         self.examples_view.build(self.secondary.tab(SECONDARY_TABS[0]))

@@ -5,6 +5,7 @@
 实际复制/清空动作由外壳（MainWindow）执行。
 """
 
+import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
 
@@ -29,11 +30,12 @@ class ClipboardView:
 
     def build(self, parent):
         self.frame = ttk.Frame(parent)
+        self.frame.pack(fill="both", expand=True)
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(1, weight=1)
 
         bar = ttk.Frame(self.frame)
-        bar.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=4)
         ttk.Button(bar, text="复制选中项", command=self._emit_copy).pack(
             side="left", padx=2
         )
@@ -43,8 +45,9 @@ class ClipboardView:
         ttk.Button(bar, text="刷新", command=self.refresh).pack(side="left", padx=2)
 
         columns = ("时间", "长度", "状态", "预览")
+        # height 仅为最小行数；<Configure> 里按像素高度放大，小窗口也不会只剩几行
         self.tree = ttk.Treeview(
-            self.frame, columns=columns, show="headings", height=8
+            self.frame, columns=columns, show="headings", height=4
         )
         self.tree.heading("时间", text="时间")
         self.tree.heading("长度", text="长度")
@@ -60,8 +63,23 @@ class ClipboardView:
         )
         vsb.grid(row=1, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=vsb.set)
+        self.tree.bind(
+            "<Configure>",
+            lambda e, tv=self.tree: self._fit_rows(tv, e.height),
+            add="+",
+        )
         self.refresh()
         return self.frame
+
+    @staticmethod
+    def _fit_rows(tree, pixel_height: int) -> None:
+        """按控件像素高度调整可见行数，保证填满面板。"""
+        row_h = 22
+        rows = max(3, int(pixel_height // row_h) - 1)
+        try:
+            tree.configure(height=rows)
+        except tk.TclError:
+            pass
 
     def refresh(self) -> None:
         """按当前历史记录重建表格。"""

@@ -84,7 +84,13 @@ class ExampleManagerUI:
             columns=columns,
             show='headings',
             selectmode='none',
-            height=8,
+            height=4,
+        )
+        # 高度变化时按像素放大可见行，避免小面板只剩固定 8 行
+        self.tree.bind(
+            '<Configure>',
+            lambda e, tv=self.tree: self._fit_rows(tv, e.height),
+            add='+',
         )
         
         # 定义列
@@ -128,6 +134,16 @@ class ExampleManagerUI:
             style="Muted.TLabel",
         ).pack(anchor='w', pady=5)
     
+    @staticmethod
+    def _fit_rows(tree, pixel_height: int) -> None:
+        """按控件像素高度调整可见行数。"""
+        row_h = 22
+        rows = max(3, int(pixel_height // row_h) - 1)
+        try:
+            tree.configure(height=rows)
+        except tk.TclError:
+            pass
+
     def _on_tree_click(self, event):
         """处理Treeview点击事件"""
         # 获取点击的区域
