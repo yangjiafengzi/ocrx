@@ -1,6 +1,4 @@
 # -- coding: utf-8 --
-import customtkinter
-
 from ocrx.gui import theme_tokens as tt
 
 EXPECTED_COLOR_KEYS = (
@@ -28,6 +26,10 @@ def test_expected_color_keys_present_and_non_empty():
 
 
 def test_apply_appearance_is_idempotent():
+    import customtkinter as ctk
+    ctk.set_appearance_mode("dark")
     tt.apply_appearance()
+    assert ctk.get_appearance_mode().lower() == "light"
+    first = ctk.get_appearance_mode()
     tt.apply_appearance()
-    assert customtkinter.get_appearance_mode().lower() == "light"
+    assert ctk.get_appearance_mode() == first

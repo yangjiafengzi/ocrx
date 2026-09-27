@@ -8,8 +8,8 @@ import tkinter as tk
 import tkinter.scrolledtext as scrolledtext
 from tkinter import ttk
 
-# 设计色板唯一来源：theme_tokens（COLORS / SPACING / FONT）
-from .theme_tokens import COLORS, FONT, SPACING
+# 设计色板唯一来源：theme_tokens（COLORS / FONT）
+from .theme_tokens import COLORS, FONT
 
 # 配色
 PRIMARY = COLORS["primary"]
