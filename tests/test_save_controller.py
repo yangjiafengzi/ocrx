@@ -86,3 +86,34 @@ def test_save_controller_run_surfaces_service_errors():
     results = ctrl.run(["a.png"], "p", "", None)
     assert results == {}
     assert any(level == "error" for level, _msg, _comp in logger.messages)
+
+
+VALID_CONFIG = {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"}
+
+
+def test_save_controller_rejects_empty_file_paths():
+    service = FakeService()
+    ctrl = SaveController(service, logger=None)
+    assert ctrl.run([], "p", "", None) == {}
+    assert ctrl.run([], "p", "", None, config=VALID_CONFIG) == {}
+    assert service.calls == []
+
+
+def test_save_controller_skips_service_when_required_config_missing():
+    service = FakeService()
+    ctrl = SaveController(service, logger=None)
+    for bad in (
+        {"API_KEY": "", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        {"API_KEY": "k", "BASE_URL": "", "MODEL_NAME": "m"},
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": ""},
+    ):
+        assert ctrl.run(["a.png"], "p", "", None, config=bad) == {}
+    assert service.calls == []
+
+
+def test_save_controller_runs_service_when_config_valid():
+    service = FakeService()
+    ctrl = SaveController(service, logger=None)
+    results = ctrl.run(["a.png"], "p", "", None, config=VALID_CONFIG)
+    assert results["a.png"][0] is True
+    assert len(service.calls) == 1

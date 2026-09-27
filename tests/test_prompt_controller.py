@@ -79,3 +79,82 @@ def test_reset_restores_default_templates(tmp_path):
     ctrl.reset()
     assert set(cfg.get_prompt_templates()) == set(DEFAULT_PROMPT_TEMPLATES)
     assert "custom" not in cfg.get_prompt_templates()
+
+
+def test_reset_only_restores_prompt_templates(tmp_path):
+    cfg, ctrl = _make(tmp_path)
+    cfg.set("API_KEY", "secret-key")
+    cfg.set("BASE_URL", "https://example.test/v1")
+    cfg.set("MODEL_NAME", "m")
+    cfg.set("OUTPUT_DIR", str(tmp_path / "out"))
+    cfg.set("MAX_WORKERS", "4")
+    assert ctrl.save_new("custom", "body") is True
+    ctrl.reset()
+    assert set(cfg.get_prompt_templates()) == set(DEFAULT_PROMPT_TEMPLATES)
+    assert "custom" not in cfg.get_prompt_templates()
+    assert cfg.get("API_KEY") == "secret-key"
+    assert cfg.get("BASE_URL") == "https://example.test/v1"
+    assert cfg.get("MODEL_NAME") == "m"
+    assert cfg.get("OUTPUT_DIR") == str(tmp_path / "out")
+    assert cfg.get("MAX_WORKERS") == "4"
+
+
+def test_reset_persists_scoped_restore(tmp_path):
+    cfg, ctrl = _make(tmp_path)
+    cfg.set("API_KEY", "secret-key")
+    assert ctrl.save_new("custom", "body") is True
+    ctrl.reset()
+    reloaded = ConfigManager(str(tmp_path / "cfg.json"))
+    reloaded.load()
+    assert set(reloaded.get_prompt_templates()) == set(DEFAULT_PROMPT_TEMPLATES)
+    assert "custom" not in reloaded.get_prompt_templates()
+    assert reloaded.get("API_KEY") == "secret-key"
+
+
+def test_rename_collision_returns_false_and_keeps_both(tmp_path):
+    cfg, ctrl = _make(tmp_path)
+    assert ctrl.save_new("alpha", "A") is True
+    assert ctrl.save_new("beta", "B") is True
+    assert ctrl.rename("alpha", "beta") is False
+    templates = cfg.get_prompt_templates()
+    assert templates["alpha"] == "A"
+    assert templates["beta"] == "B"
+    reloaded = ConfigManager(str(tmp_path / "cfg.json"))
+    reloaded.load()
+    assert reloaded.get_prompt_template("alpha") == "A"
+    assert reloaded.get_prompt_template("beta") == "B"
+
+
+def test_save_new_existing_custom_name_returns_false(tmp_path):
+    cfg, ctrl = _make(tmp_path)
+    assert ctrl.save_new("custom", "body") is True
+    assert ctrl.save_new("custom", "other") is False
+    assert cfg.get_prompt_template("custom") == "body"
+
+
+class _ExplodingConfig:
+    """ConfigManager stand-in that raises on every mutation/read."""
+
+    def get_prompt_templates(self):
+        raise RuntimeError("config exploded")
+
+    def add_prompt_template(self, name, template):
+        raise RuntimeError("config exploded")
+
+    def reset_to_defaults(self, keys=None):
+        raise RuntimeError("config exploded")
+
+    def save(self):
+        raise RuntimeError("config exploded")
+
+    @property
+    def config(self):
+        raise RuntimeError("config exploded")
+
+
+def test_prompt_controller_swallows_unexpected_config_errors():
+    ctrl = PromptController(_ExplodingConfig())
+    assert ctrl.save_new("custom", "body") is False
+    assert ctrl.rename("a", "b") is False
+    assert ctrl.delete("a") is False
+    assert ctrl.reset() is None

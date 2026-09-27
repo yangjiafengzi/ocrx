@@ -7,7 +7,9 @@ arguments through and surfaces worker failures as a result dict so callers
 on the Tk mainloop never see an exception escape.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..validation import validate_preflight
 
 
 class SaveController:
@@ -21,7 +23,14 @@ class SaveController:
         prompt: str,
         page_range: str,
         example_images: Optional[List[Tuple[str, bytes]]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Tuple[bool, Optional[str]]]:
+        if not file_paths:
+            return {}
+        if config is not None:
+            errors = validate_preflight(config, file_paths, page_range)
+            if errors:
+                return {}
         try:
             return self.service.process_files(
                 file_paths=file_paths,

@@ -11,6 +11,9 @@ from pathlib import Path
 
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
+# Message shown when the run starts with no input files selected.
+ERR_NO_FILES = "请至少选择一个文件"
+
 # Upper bound on how many page numbers a single input may expand to. Keeps the
 # validity path from materializing absurd ranges like "1-99999999".
 MAX_PAGE_SPAN = 10000
@@ -96,7 +99,7 @@ def validate_preflight(config: dict, file_paths: list[str], page_range: str) -> 
     if not (config.get("MODEL_NAME") or "").strip():
         errors.append("请填写 Model Name")
     if not file_paths:
-        errors.append("请至少选择一个文件")
+        errors.append(ERR_NO_FILES)
     for path in file_paths:
         if Path(path).suffix.lower() not in SUPPORTED_SUFFIXES:
             errors.append(f"不支持的文件类型：{Path(path).name}")

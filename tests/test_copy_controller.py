@@ -88,3 +88,41 @@ def test_copy_controller_run_surfaces_service_errors():
     assert ok is False
     assert "worker failed" in content
     assert any(level == "error" for level, _msg, _comp in logger.messages)
+
+
+VALID_CONFIG = {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"}
+
+
+def test_copy_controller_rejects_empty_file_paths():
+    service = FakeService()
+    ctrl = CopyController(service, logger=None)
+    ok, content = ctrl.run([], "p", "", None)
+    assert ok is False
+    assert content
+    ok, content = ctrl.run([], "p", "", None, config=VALID_CONFIG)
+    assert ok is False
+    assert content
+    assert service.calls == []
+
+
+def test_copy_controller_skips_service_when_required_config_missing():
+    service = FakeService()
+    ctrl = CopyController(service, logger=None)
+    for bad in (
+        {"API_KEY": "", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        {"API_KEY": "k", "BASE_URL": "", "MODEL_NAME": "m"},
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": ""},
+    ):
+        ok, content = ctrl.run(["a.png"], "p", "", None, config=bad)
+        assert ok is False
+        assert content
+    assert service.calls == []
+
+
+def test_copy_controller_runs_service_when_config_valid():
+    service = FakeService()
+    ctrl = CopyController(service, logger=None)
+    ok, content = ctrl.run(["a.png"], "p", "", None, config=VALID_CONFIG)
+    assert ok is True
+    assert content == "hello"
+    assert len(service.calls) == 1
