@@ -31,15 +31,20 @@ class WizardNav:
             btn.pack(side="left", padx=4, pady=4)
             self.buttons.append(btn)
         self.current = 0
+        # Paint the initial step highlight without firing on_change.
+        self._apply_highlight(0)
 
     def pack(self, **kwargs):
         self.frame.pack(**kwargs)
 
-    def set_current(self, index: int) -> None:
-        self.current = index
+    def _apply_highlight(self, index: int) -> None:
         for i, btn in enumerate(self.buttons):
             btn.configure(
                 fg_color=COLORS["primary"] if i == index else COLORS["border"],
                 text_color="#FFFFFF" if i == index else COLORS["text"],
             )
+
+    def set_current(self, index: int) -> None:
+        self.current = index
+        self._apply_highlight(index)
         self.on_change(index)

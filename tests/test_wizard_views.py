@@ -7,12 +7,15 @@ import tkinter as tk
 import pytest
 
 from ocrx.config import ConfigManager
+from ocrx.gui.controllers.prompt_controller import PromptController
 from ocrx.gui.session_state import SessionState
+from ocrx.gui.theme_tokens import COLORS
 from ocrx.gui.views.config_step import ConfigStep
 from ocrx.gui.views.files_step import FilesStep
 from ocrx.gui.views.prompt_step import PromptStep
 from ocrx.gui.views.run_step import RunStep
 from ocrx.gui.views.wizard_nav import WizardNav
+from ocrx.prompt_templates import DEFAULT_PROMPT_TEMPLATES
 
 
 @pytest.fixture
@@ -43,6 +46,26 @@ def test_wizard_nav_selects_steps(tk_root):
     nav = WizardNav(tk_root, ["配置", "文件", "提示词", "执行"], on_change=seen.append)
     nav.set_current(1)
     assert seen[-1] == 1
+
+
+def test_wizard_nav_initial_highlight_without_on_change(tk_root):
+    seen = []
+    nav = WizardNav(tk_root, ["配置", "文件", "提示词", "执行"], on_change=seen.append)
+    assert seen == []
+    assert nav.current == 0
+    assert str(nav.buttons[0].cget("fg_color")) == COLORS["primary"]
+    assert str(nav.buttons[1].cget("fg_color")) == COLORS["border"]
+    assert str(nav.buttons[0].cget("text_color")) == "#FFFFFF"
+    assert str(nav.buttons[3].cget("text_color")) == COLORS["text"]
+
+
+def test_wizard_nav_set_current_still_paints_and_notifies(tk_root):
+    seen = []
+    nav = WizardNav(tk_root, ["配置", "文件", "提示词", "执行"], on_change=seen.append)
+    nav.set_current(2)
+    assert seen == [2]
+    assert str(nav.buttons[2].cget("fg_color")) == COLORS["primary"]
+    assert str(nav.buttons[0].cget("fg_color")) == COLORS["border"]
 
 
 def test_files_step_collect(tk_root, monkeypatch):
@@ -135,6 +158,25 @@ def test_files_step_add_files_deduplicates(tk_root, monkeypatch):
     assert step._paths == []
 
 
+def test_files_step_listbox_read_only_collect_authoritative(tk_root, monkeypatch):
+    state = SessionState()
+    step = FilesStep()
+    step.build(tk_root)
+    assert str(step.listbox.cget("state")) == "disabled"
+    monkeypatch.setattr(step, "pick_files", lambda: ["a.png"])
+    step.add_files()
+    # 只读文本框：直接写入被忽略，显示内容不变。
+    step.listbox.insert("1.0", "hacked.txt")
+    assert step.listbox.get("1.0", "end-1c") == "a.png"
+    # 即使强行改写文本框，collect() 仍以内部 _paths 为准。
+    step.listbox.configure(state="normal")
+    step.listbox.delete("1.0", "end")
+    step.listbox.insert("1.0", "hacked.txt")
+    step.listbox.configure(state="disabled")
+    step.collect(state)
+    assert state.file_paths == ["a.png"]
+
+
 def test_prompt_step_collect_and_load_state(tk_root):
     state = SessionState(prompt_text="识别手写内容")
     step = PromptStep()
@@ -143,6 +185,69 @@ def test_prompt_step_collect_and_load_state(tk_root):
     out = SessionState()
     step.collect(out)
     assert out.prompt_text == "识别手写内容"
+
+
+def test_prompt_step_few_shot_selection_collect_and_load_state(tk_root):
+    state = SessionState(
+        prompt_text="识别手写内容",
+        selected_example_ids=["ex1", "ex3"],
+    )
+    step = PromptStep(examples=["ex1", "ex2", "ex3"])
+    step.build(tk_root)
+    step.load_state(state, None)
+    assert step.get_selected_example_ids() == ["ex1", "ex3"]
+    out = SessionState()
+    step.collect(out)
+    assert out.prompt_text == "识别手写内容"
+    assert out.selected_example_ids == ["ex1", "ex3"]
+
+
+def test_prompt_step_few_shot_widget_drives_selection(tk_root):
+    step = PromptStep(examples=["ex1", "ex2"])
+    step.build(tk_root)
+    step.example_checks["ex2"].select()
+    out = SessionState()
+    step.collect(out)
+    assert out.selected_example_ids == ["ex2"]
+    step.example_checks["ex2"].deselect()
+    step.example_checks["ex1"].select()
+    out2 = SessionState()
+    step.collect(out2)
+    assert out2.selected_example_ids == ["ex1"]
+
+
+def test_prompt_step_few_shot_without_library_uses_simple_list(tk_root):
+    step = PromptStep()
+    step.build(tk_root)
+    step.set_examples(["a", "b", "c"])
+    assert set(step.example_checks) == {"a", "b", "c"}
+    step.set_selected_example_ids(["a", "c"])
+    out = SessionState()
+    step.collect(out)
+    assert out.selected_example_ids == ["a", "c"]
+    # 未展示的 id 也保留，load_state/collect 往返不丢数据。
+    step2 = PromptStep()
+    step2.build(tk_root)
+    step2.load_state(SessionState(selected_example_ids=["x", "y"]), None)
+    out2 = SessionState()
+    step2.collect(out2)
+    assert out2.selected_example_ids == ["x", "y"]
+
+
+def test_prompt_step_accepts_example_library(tk_root, tmp_path):
+    from ocrx.example_library import Example, ExampleLibrary
+
+    lib = ExampleLibrary(str(tmp_path / "lib"))
+    lib.examples.append(
+        Example(id="ex1", image_path="x.png", text="t1", description="样例一")
+    )
+    step = PromptStep(examples=lib)
+    step.build(tk_root)
+    assert "ex1" in step.example_checks
+    step.example_checks["ex1"].select()
+    out = SessionState()
+    step.collect(out)
+    assert out.selected_example_ids == ["ex1"]
 
 
 def test_prompt_step_uses_prompt_controller(tk_root):
@@ -179,6 +284,38 @@ def test_prompt_step_uses_prompt_controller(tk_root):
         ("update", "自定义", "内容"),
         ("save_new", "自定义", "内容"),
     ]
+
+
+def test_prompt_step_crud_refreshes_combo_and_textbox(tk_root, tmp_path):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    step = PromptStep(prompt_controller=PromptController(cfg))
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    defaults = list(DEFAULT_PROMPT_TEMPLATES.keys())
+    assert list(step.preset.cget("values")) == defaults
+
+    # save_new：下拉出现新名称，正文与配置一致。
+    assert step.save_new("自定义", "新内容") is True
+    values = list(step.preset.cget("values"))
+    assert "自定义" in values
+    assert step.preset.get() == "自定义"
+    assert step.textbox.get("1.0", "end-1c") == "新内容"
+
+    # delete：下拉移除该名称，正文回到剩余预设。
+    assert step.delete("自定义") is True
+    values = list(step.preset.cget("values"))
+    assert "自定义" not in values
+    assert step.preset.get() == defaults[0]
+    assert step.textbox.get("1.0", "end-1c") == DEFAULT_PROMPT_TEMPLATES[defaults[0]]
+
+    # reset：下拉与正文回到默认模板。
+    assert step.save_new("临时", "临时内容") is True
+    step.reset()
+    values = list(step.preset.cget("values"))
+    assert "临时" not in values
+    assert values == defaults
+    assert step.textbox.get("1.0", "end-1c") == DEFAULT_PROMPT_TEMPLATES[step.preset.get()]
 
 
 def test_run_step_set_running_toggles_buttons(tk_root):

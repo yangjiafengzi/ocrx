@@ -19,6 +19,8 @@ class FilesStep:
         self.frame = ctk.CTkFrame(parent)
         self.listbox = ctk.CTkTextbox(self.frame, height=180)
         self.listbox.pack(fill="both", expand=True, padx=8, pady=8)
+        # 只读展示：collect() 以内部 _paths 为准，不读文本框内容。
+        self.listbox.configure(state="disabled")
         self.page_range = ctk.CTkEntry(
             self.frame, placeholder_text="页码范围，如 1,3,5-10"
         )
@@ -53,8 +55,10 @@ class FilesStep:
         self._refresh_listbox()
 
     def _refresh_listbox(self):
+        self.listbox.configure(state="normal")
         self.listbox.delete("1.0", "end")
         self.listbox.insert("1.0", "\n".join(self._paths))
+        self.listbox.configure(state="disabled")
 
     def load_state(self, state, config) -> None:
         self._paths = list(state.file_paths)
