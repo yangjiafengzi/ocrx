@@ -3,7 +3,7 @@
 
 import customtkinter as ctk
 
-COLORS = {
+COLORS: dict[str, str] = {
     "primary": "#2563EB",
     "primary_hover": "#1D4ED8",
     "bg": "#F1F5F9",
@@ -15,8 +15,8 @@ COLORS = {
     "danger": "#DC2626",
 }
 
-SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
-FONT = ("Microsoft YaHei UI", 12)
+SPACING: dict[str, int] = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+FONT: tuple[str, int] = ("Microsoft YaHei UI", 12)
 
 
 def apply_appearance() -> None:

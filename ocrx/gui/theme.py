@@ -8,21 +8,24 @@ import tkinter as tk
 import tkinter.scrolledtext as scrolledtext
 from tkinter import ttk
 
+# 设计色板唯一来源：theme_tokens（COLORS / SPACING / FONT）
+from .theme_tokens import COLORS, FONT, SPACING
+
 # 配色
-PRIMARY = "#2563EB"
-PRIMARY_HOVER = "#1D4ED8"
+PRIMARY = COLORS["primary"]
+PRIMARY_HOVER = COLORS["primary_hover"]
 PRIMARY_LIGHT = "#DBEAFE"
-BG = "#F1F5F9"
-SURFACE = "#FFFFFF"
-BORDER = "#E2E8F0"
-TEXT = "#0F172A"
-MUTED = "#64748B"
-SUCCESS = "#16A34A"
+BG = COLORS["bg"]
+SURFACE = COLORS["surface"]
+BORDER = COLORS["border"]
+TEXT = COLORS["text"]
+MUTED = COLORS["muted"]
+SUCCESS = COLORS["success"]
 SUCCESS_HOVER = "#15803D"
-DANGER = "#DC2626"
+DANGER = COLORS["danger"]
 DANGER_HOVER = "#B91C1C"
 
-FONT_FAMILY = "Microsoft YaHei UI"
+FONT_FAMILY = FONT[0]
 
 
 def setup_styles(root: tk.Tk):
