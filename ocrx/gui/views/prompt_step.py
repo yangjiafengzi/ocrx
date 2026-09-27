@@ -248,15 +248,29 @@ class PromptStep:
         if resolved is not None:
             templates = resolved.get_prompt_templates()
             names = list(templates.keys())
+        saved_name = ""
+        saved_text = ""
+        if state is not None:
+            saved_name = getattr(state, "prompt_preset_name", "") or ""
+            saved_text = getattr(state, "prompt_text", "") or ""
+        selected = ""
         if self.preset is not None:
             self.preset.configure(values=names or [""])
-            if names:
-                self.preset.set(names[0])
-        text = ""
-        if state is not None and getattr(state, "prompt_text", ""):
-            text = state.prompt_text
-        elif names:
-            text = templates.get(self.preset.get(), "")
+            if saved_name and saved_name in names:
+                selected = saved_name
+            else:
+                current = self.preset.get()
+                if current in names:
+                    selected = current
+                elif names:
+                    selected = names[0]
+            self.preset.set(selected)
+        if selected and saved_text and (not saved_name or saved_name == selected):
+            text = saved_text
+        elif selected:
+            text = templates.get(selected, "")
+        else:
+            text = saved_text
         self.textbox.delete("1.0", "end")
         self.textbox.insert("1.0", text)
         if state is not None:
@@ -267,4 +281,6 @@ class PromptStep:
     def collect(self, state, config=None) -> None:
         if state is not None:
             state.prompt_text = self._current_text()
+            if self.preset is not None:
+                state.prompt_preset_name = self.preset.get()
             state.selected_example_ids = self.get_selected_example_ids()

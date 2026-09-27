@@ -351,3 +351,58 @@ def test_run_step_callbacks(tk_root):
     step.copy_btn.invoke()
     step.stop_btn.invoke()
     assert seen == ["save", "copy", "stop"]
+
+
+def test_prompt_step_roundtrip_builtin_preset_name_and_edited_body(tk_root, tmp_path):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    names = list(DEFAULT_PROMPT_TEMPLATES.keys())
+    target = names[1]
+    edited = "edited builtin body"
+    step = PromptStep()
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    step.preset.set(target)
+    step.textbox.delete("1.0", "end")
+    step.textbox.insert("1.0", edited)
+    state = SessionState()
+    step.collect(state)
+    assert state.prompt_preset_name == target
+    assert state.prompt_text == edited
+
+    restored = PromptStep()
+    restored.build(tk_root)
+    restored.load_state(state, cfg)
+    assert restored.preset.get() == target
+    assert restored.textbox.get("1.0", "end-1c") == edited
+    out = SessionState()
+    restored.collect(out)
+    assert out.prompt_preset_name == target
+    assert out.prompt_text == edited
+
+
+def test_prompt_step_roundtrip_custom_preset_name_and_edited_body(tk_root, tmp_path):
+    cfg = ConfigManager(str(tmp_path / "cfg.json"))
+    cfg.load()
+    cfg.add_prompt_template("custom-preset", "template body")
+    edited = "edited custom body"
+    step = PromptStep()
+    step.build(tk_root)
+    step.load_state(SessionState(), cfg)
+    step.preset.set("custom-preset")
+    step.textbox.delete("1.0", "end")
+    step.textbox.insert("1.0", edited)
+    state = SessionState()
+    step.collect(state)
+    assert state.prompt_preset_name == "custom-preset"
+    assert state.prompt_text == edited
+
+    restored = PromptStep()
+    restored.build(tk_root)
+    restored.load_state(state, cfg)
+    assert restored.preset.get() == "custom-preset"
+    assert restored.textbox.get("1.0", "end-1c") == edited
+    out = SessionState()
+    restored.collect(out)
+    assert out.prompt_preset_name == "custom-preset"
+    assert out.prompt_text == edited
