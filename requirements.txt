@@ -8,5 +8,8 @@ PyMuPDF>=1.23.0
 # 图像处理
 Pillow>=10.0.0
 
+# GUI 界面
+customtkinter>=5.2.0
+
 # 打包工具（可选，仅打包时需要）
 pyinstaller>=5.0.0
