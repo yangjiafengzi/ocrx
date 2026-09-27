@@ -1,7 +1,9 @@
 # -- coding: utf-8 --
 """SaveController unit tests (fake service, no GUI)."""
 
-from ocrx.gui.controllers.save_controller import SaveController
+from ocrx.gui.controllers.copy_controller import CopyController
+from ocrx.gui.controllers.save_controller import SaveController, SaveResult
+from ocrx.gui.validation import ERR_NO_FILES, validate_preflight
 
 
 class FakeService:
@@ -42,19 +44,24 @@ class FakeLogger:
         self.messages.append(("error", message, component))
 
 
-def test_save_controller_run():
+def test_save_controller_run_returns_save_result():
     service = FakeService()
     ctrl = SaveController(service, logger=None)
-    results = ctrl.run(["a.png"], "p", "", None)
-    assert results["a.png"][0] is True
+    result = ctrl.run(["a.png"], "p", "", None)
+    assert isinstance(result, SaveResult)
+    assert result.ok is True
+    assert result.error == ""
+    assert result.results["a.png"][0] is True
 
 
 def test_save_controller_delegates_kwargs():
     service = FakeService(result={"a.png": (False, None), "b.png": (True, "out/b.md")})
     ctrl = SaveController(service, logger=None)
     examples = [("sample text", b"img")]
-    results = ctrl.run(["a.png", "b.png"], "prompt text", "1-2", examples)
-    assert results == {"a.png": (False, None), "b.png": (True, "out/b.md")}
+    result = ctrl.run(["a.png", "b.png"], "prompt text", "1-2", examples)
+    assert result.ok is True
+    assert result.error == ""
+    assert result.results == {"a.png": (False, None), "b.png": (True, "out/b.md")}
     assert service.calls == [
         {
             "file_paths": ["a.png", "b.png"],
@@ -83,8 +90,10 @@ def test_save_controller_run_surfaces_service_errors():
     service = FakeService(error=RuntimeError("worker failed"))
     logger = FakeLogger()
     ctrl = SaveController(service, logger=logger)
-    results = ctrl.run(["a.png"], "p", "", None)
-    assert results == {}
+    result = ctrl.run(["a.png"], "p", "", None)
+    assert result.ok is False
+    assert result.results == {}
+    assert "worker failed" in result.error
     assert any(level == "error" for level, _msg, _comp in logger.messages)
 
 
@@ -94,8 +103,11 @@ VALID_CONFIG = {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"}
 def test_save_controller_rejects_empty_file_paths():
     service = FakeService()
     ctrl = SaveController(service, logger=None)
-    assert ctrl.run([], "p", "", None) == {}
-    assert ctrl.run([], "p", "", None, config=VALID_CONFIG) == {}
+    for config in (None, VALID_CONFIG):
+        result = ctrl.run([], "p", "", None, config=config)
+        assert result.ok is False
+        assert result.results == {}
+        assert result.error == ERR_NO_FILES
     assert service.calls == []
 
 
@@ -107,13 +119,34 @@ def test_save_controller_skips_service_when_required_config_missing():
         {"API_KEY": "k", "BASE_URL": "", "MODEL_NAME": "m"},
         {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": ""},
     ):
-        assert ctrl.run(["a.png"], "p", "", None, config=bad) == {}
+        result = ctrl.run(["a.png"], "p", "", None, config=bad)
+        assert result.ok is False
+        assert result.results == {}
+        assert result.error == "\n".join(validate_preflight(bad, ["a.png"], ""))
     assert service.calls == []
 
 
 def test_save_controller_runs_service_when_config_valid():
     service = FakeService()
     ctrl = SaveController(service, logger=None)
-    results = ctrl.run(["a.png"], "p", "", None, config=VALID_CONFIG)
-    assert results["a.png"][0] is True
+    result = ctrl.run(["a.png"], "p", "", None, config=VALID_CONFIG)
+    assert result.ok is True
+    assert result.results["a.png"][0] is True
+    assert result.error == ""
     assert len(service.calls) == 1
+
+
+def test_save_controller_error_text_matches_copy_controller():
+    """Empty-file and preflight failures must match CopyController wording."""
+    save = SaveController(FakeService(), logger=None)
+    copy = CopyController(FakeService(), logger=None)
+
+    empty = save.run([], "p", "", None)
+    _, copy_error = copy.run([], "p", "", None)
+    assert empty.error == copy_error
+
+    bad_config = {"API_KEY": "", "BASE_URL": "https://x", "MODEL_NAME": "m"}
+    preflight = save.run(["a.png"], "p", "", None, config=bad_config)
+    _, copy_error = copy.run(["a.png"], "p", "", None, config=bad_config)
+    assert preflight.error == copy_error
+    assert preflight.error
