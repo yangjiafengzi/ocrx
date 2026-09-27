@@ -1,9 +1,35 @@
 # -- coding: utf-8 --
-"""Preflight validation helpers for wizard run step."""
+"""Preflight validation helpers for wizard run step.
+
+UI preflight here is strict: malformed page-range input is rejected with a
+validation error instead of being silently dropped. ``ocrx.pdf_processor._parse_page_range``
+remains the lenient batch parser (bad tokens ignored) until the two are
+consolidated later.
+"""
 
 from pathlib import Path
 
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
+# Upper bound on how many page numbers a single input may expand to. Keeps the
+# validity path from materializing absurd ranges like "1-99999999".
+MAX_PAGE_SPAN = 10000
+
+
+def _parse_page_number(token: str) -> int | None:
+    """Return a positive page number for an ASCII decimal token, else None.
+
+    Rejects empty tokens and non-ASCII numerals (e.g. "²", which
+    ``str.isdigit()`` accepts but ``int()`` raises on). The ``try/except``
+    also guards against ``ValueError`` from Python's int-string digit limit.
+    """
+    if not token or not token.isascii() or not token.isdecimal():
+        return None
+    try:
+        value = int(token)
+    except ValueError:
+        return None
+    return value if value >= 1 else None
 
 
 def parse_page_range_tokens(page_range: str) -> list[int] | None:
@@ -11,8 +37,11 @@ def parse_page_range_tokens(page_range: str) -> list[int] | None:
 
     Returns the sorted unique page numbers on success, or None when the
     structure is invalid (non-integer tokens, zero/negative pages, reversed or
-    malformed ranges). Empty or whitespace-only input returns [] meaning
-    "no explicit tokens" (i.e. all pages).
+    malformed ranges, expansions above MAX_PAGE_SPAN).
+
+    Empty contract: empty, whitespace-only, and separator-only input (e.g.
+    "", "   ", ",") all return [] meaning "no explicit tokens" (i.e. all
+    pages). Empty segments between tokens are ignored ("1,,2," -> [1, 2]).
     """
     text = (page_range or "").strip()
     if not text:
@@ -27,30 +56,33 @@ def parse_page_range_tokens(page_range: str) -> list[int] | None:
             if len(pieces) != 2:
                 return None
             start_s, end_s = pieces[0].strip(), pieces[1].strip()
-            if not (start_s.isdigit() and end_s.isdigit()):
+            start = _parse_page_number(start_s)
+            end = _parse_page_number(end_s)
+            if start is None or end is None or start > end:
                 return None
-            start, end = int(start_s), int(end_s)
-            if start < 1 or start > end:
+            if end - start + 1 > MAX_PAGE_SPAN:
                 return None
             pages.update(range(start, end + 1))
-        else:
-            if not part.isdigit():
+            if len(pages) > MAX_PAGE_SPAN:
                 return None
-            page = int(part)
-            if page < 1:
+        else:
+            page = _parse_page_number(part)
+            if page is None:
                 return None
             pages.add(page)
     if not pages:
-        return None
+        return []
     return sorted(pages)
 
 
 def parse_page_range(page_range: str, total_pages: int) -> list[int] | None:
-    text = (page_range or "").strip()
-    if not text:
-        return list(range(1, total_pages + 1))
     ordered = parse_page_range_tokens(page_range)
-    if not ordered or ordered[-1] > total_pages:
+    if ordered is None:
+        return None
+    if not ordered:
+        # empty contract: no explicit tokens means all pages
+        return list(range(1, total_pages + 1))
+    if ordered[-1] > total_pages:
         return None
     return ordered
 

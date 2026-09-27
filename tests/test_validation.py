@@ -105,3 +105,55 @@ def test_parse_page_range_tokens_rejects_invalid_structure():
     assert parse_page_range_tokens("1--3") is None
     assert parse_page_range_tokens("0-3") is None
     assert parse_page_range_tokens("abc") is None
+
+
+def test_parse_page_range_tokens_rejects_unicode_digit_tokens():
+    # Regression: str.isdigit() accepts e.g. "²" but int("²") raises ValueError.
+    assert parse_page_range_tokens("1-²") is None
+    assert parse_page_range_tokens("²-3") is None
+    assert parse_page_range_tokens("²") is None
+    assert parse_page_range_tokens("1²") is None
+
+
+def test_validate_preflight_unicode_page_range_errors_without_raising():
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.pdf"],
+        "1-²",
+    )
+    assert any("页码范围" in e for e in errors)
+
+
+def test_parse_page_range_tokens_rejects_huge_ranges():
+    # Regression: expanding 1-99999999 must not materialize ~1e8 pages.
+    assert parse_page_range_tokens("1-99999999") is None
+    assert parse_page_range_tokens("1-10001") is None
+    assert parse_page_range_tokens("1-10000") == list(range(1, 10001))
+
+
+def test_parse_page_range_huge_range_returns_none():
+    assert parse_page_range("1-99999999", 50) is None
+
+
+def test_validate_preflight_rejects_huge_page_range():
+    errors = validate_preflight(
+        {"API_KEY": "k", "BASE_URL": "https://x", "MODEL_NAME": "m"},
+        ["a.pdf"],
+        "1-99999999",
+    )
+    assert any("页码范围" in e for e in errors)
+
+
+def test_parse_page_range_tokens_empty_contract():
+    # Empty, whitespace-only, and separator-only input all mean "no explicit
+    # pages" (i.e. all pages); empty segments between tokens are ignored.
+    assert parse_page_range_tokens("") == []
+    assert parse_page_range_tokens("   ") == []
+    assert parse_page_range_tokens(",") == []
+    assert parse_page_range_tokens(" , , ") == []
+    assert parse_page_range_tokens("1,,2,") == [1, 2]
+
+
+def test_parse_page_range_empty_segments_mean_all_pages():
+    assert parse_page_range(",", 3) == [1, 2, 3]
+    assert parse_page_range("1,,2,", 5) == [1, 2]
