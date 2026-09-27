@@ -16,6 +16,7 @@ import fitz
 import pytest
 from PIL import Image
 
+from ocrx.clipboard import ClipboardHistory
 from ocrx.gui.app_context import AppContext
 from ocrx.gui.main_window import MainWindow
 from ocrx.gui.validation import ERR_EMPTY_PROMPT
@@ -127,19 +128,32 @@ def test_gui_save_mode_writes_markdown(gui_window, mock_openai_server, tmp_path)
     assert str(win.run_step.stop_btn.cget("state")) == "disabled"
 
 
-def test_gui_copy_mode_records_clipboard_history(gui_window, mock_openai_server, tmp_path):
+def test_gui_copy_mode_records_clipboard_history(
+    gui_window, mock_openai_server, tmp_path, monkeypatch
+):
     win = gui_window
     out_dir = Path(win.context.config.get("OUTPUT_DIR"))
     png = _tiny_png(tmp_path / "a.png")
     _prepare_run(win, [png], prompt="识别文字")
 
+    def fake_copy_to_clipboard(self, content, max_retries=3):
+        # Record a success entry without clobbering the developer OS clipboard.
+        self.add_record(content, success=True, method="test-double")
+        return True
+
+    monkeypatch.setattr(ClipboardHistory, "copy_to_clipboard", fake_copy_to_clipboard)
+
     win.run_copy_now()
     assert win.wait_idle(timeout=15)
 
     history = win.context.clipboard.get_history()
-    assert history, "clipboard history should have content"
-    assert any(record.get("content") for record in history)
-    joined = "\n".join(record.get("content") or "" for record in history)
+    successful = [
+        record
+        for record in history
+        if record.get("success") and record.get("content")
+    ]
+    assert successful, "clipboard history should record a successful copy"
+    joined = "\n".join(record.get("content") or "" for record in successful)
     assert "识别结果-" in joined
     assert win.session.last_result
     assert not list(out_dir.glob("*_ocr.md"))
