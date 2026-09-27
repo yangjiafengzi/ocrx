@@ -1,5 +1,9 @@
 # OCRX 2.0 架构设计文档
 
+> 注：GUI 已重构为向导外壳 + `views/` + `controllers/` 分层，旧
+> `ocrx/gui/handlers/` 目录已删除。本文其余细节若有出入，以 `AGENTS.md`
+> 为准。
+
 ## 1. 架构概述
 
 ### 1.1 设计目标
@@ -11,13 +15,13 @@
 
 ### 1.2 架构模式
 
-采用**分层架构** + **处理器模式**：
+采用**分层架构** + **视图/控制器模式**：
 
 ```
 ┌─────────────────────────────────────────┐
 │              表示层 (GUI)                │
 │  ┌─────────────┐  ┌─────────────────┐  │
-│  │ MainWindow  │  │    Handlers     │  │
+│  │ MainWindow  │  │ Views + Ctrl    │  │
 │  └─────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────┘
                     ↓
@@ -83,17 +87,19 @@
 - 最大延迟：30 秒
 - API 超时：120 秒
 
-### 2.3 Handlers（处理器）
+### 2.3 Views / Controllers（视图与控制器）
 
-**职责**：封装特定功能，与 GUI 解耦
+**职责**：视图只渲染并回传用户意图；控制器封装工作流，与 GUI 控件解耦
 
-**处理器列表**：
-- `SaveHandler`：识别并保存
-- `CopyHandler`：识别并复制
-- `ClipboardHandler`：剪贴板历史
-- `ResultHandler`：结果展示
-- `PromptHandler`：提示词预设管理
-- `ProgressHandler`：进度条显示
+**视图（`ocrx/gui/views/`）**：
+- `config_step` / `files_step` / `prompt_step` / `run_step`：向导四步
+- `examples_view` / `clipboard_view` / `logs_view`：辅助页
+
+**控制器（`ocrx/gui/controllers/`）**：
+- `SaveController`：识别并保存
+- `CopyController`：识别并复制
+- `PromptController`：提示词预设管理
+- `ProgressController`：进度/状态节流上屏
 
 ## 3. 数据流
 
@@ -102,7 +108,7 @@
 ```
 用户点击"识别并保存"
     ↓
-SaveHandler.process_files()
+MainWindow._run_job() → SaveController.run()
     ↓
 ProcessingService.process_files()
     ↓
@@ -127,7 +133,7 @@ ProcessingService.process_files()
 ```
 用户点击"识别并复制"
     ↓
-CopyHandler.process_files()
+MainWindow._run_job() → CopyController.run()
     ↓
 ProcessingService.process_and_copy()
     ↓
@@ -210,17 +216,21 @@ DEFAULT_CONFIG = {
 
 ## 7. 扩展点
 
-### 7.1 添加新处理器
+### 7.1 添加新视图 / 控制器
 
 ```python
-# handlers/new_handler.py
-from .base_handler import BaseHandler
+# ocrx/gui/controllers/new_controller.py
+class NewController:
+    def __init__(self, service, logger=None):
+        self.service = service
+        self.logger = logger
 
-class NewHandler(BaseHandler):
-    def process(self, ...):
-        # 实现功能
-        pass
+    def run(self, ...):
+        # 工作流逻辑；失败以返回值上抛，不让异常进入 mainloop
+        ...
 ```
+
+视图放 `ocrx/gui/views/`，只负责渲染和回调；由 `MainWindow` 装配。
 
 ### 7.2 自定义 OCR 引擎
 
@@ -264,7 +274,7 @@ class CustomOCREngine(OCREngine):
 
 ### 10.1 单元测试
 
-- 测试各个处理器
+- 测试各个控制器
 - 测试核心服务方法
 - 测试工具函数
 

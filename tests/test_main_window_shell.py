@@ -6,6 +6,7 @@ run through SaveController/CopyController on worker threads; progress is
 marshalled to RunStep via ProgressController.
 """
 
+import threading
 import time
 import tkinter as tk
 
@@ -208,12 +209,51 @@ def test_save_failure_shows_error_and_unlocks(win, tk_root, tmp_path):
     assert str(win.run_step.save_btn.cget("state")) == "normal"
 
 
+def test_save_all_failed_shows_error_not_success(win, tk_root, tmp_path):
+    """SaveResult.ok 但 0 个文件成功时不得显示“识别并保存完成”。"""
+    service = _prepare_ready_to_run(win, tmp_path)
+    service.save_results = {"a": (False, None), "b": (False, None)}
+
+    win.run_save_now()
+    assert win.wait_idle(timeout=10.0) is True
+
+    status = win.run_step.status.cget("text")
+    shown = win.run_step.result.get("1.0", "end-1c")
+    assert "识别并保存完成" not in status
+    assert "识别并保存完成" not in shown
+    assert "0/2" in status
+    assert str(win.run_step.save_btn.cget("state")) == "normal"
+
+
+def test_save_partial_reports_partial_not_full_success(win, tk_root, tmp_path):
+    """部分文件失败时状态应为部分成功，而不是“识别并保存完成”。"""
+    service = _prepare_ready_to_run(win, tmp_path)
+    out = tmp_path / "out" / "a_ocr.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("保存的识别内容", encoding="utf-8")
+    service.save_results = {"a": (True, str(out)), "b": (False, None)}
+
+    win.run_save_now()
+    assert win.wait_idle(timeout=10.0) is True
+
+    status = win.run_step.status.cget("text")
+    assert "识别并保存完成" not in status
+    assert "1/2" in status
+    assert "保存的识别内容" in win.run_step.result.get("1.0", "end-1c")
+    assert str(win.run_step.save_btn.cget("state")) == "normal"
+
+
 def test_copy_success_sets_clipboard_and_result(win, tk_root, tmp_path):
     service = _prepare_ready_to_run(win, tmp_path)
     copied = []
-    win.context.clipboard.copy_to_clipboard = (
-        lambda content: copied.append(content) or True
-    )
+    threads = []
+
+    def fake_copy(content):
+        threads.append(threading.current_thread())
+        copied.append(content)
+        return True
+
+    win.context.clipboard.copy_to_clipboard = fake_copy
     service.copy_result = (True, "复制的内容")
 
     win.run_copy_now()
@@ -221,6 +261,7 @@ def test_copy_success_sets_clipboard_and_result(win, tk_root, tmp_path):
 
     assert service.calls and service.calls[0]["mode"] == "copy"
     assert copied == ["复制的内容"]
+    assert threads and threads[0] is not threading.current_thread()
     shown = win.run_step.result.get("1.0", "end-1c")
     assert "复制的内容" in shown
     assert win.context.session_state.last_result == "复制的内容"
@@ -259,8 +300,44 @@ def test_copy_failure_path_offers_copy_all(win, tk_root, tmp_path):
     assert "自动复制失败" in win.run_step.status.cget("text")
 
     win.run_step.copy_all_btn.invoke()
+    assert win.wait_idle(timeout=5.0) is True
     assert copied[-1] == full
     assert copied[-1] == win.session.last_result
+    assert "已复制到剪贴板" in win.run_step.status.cget("text")
+
+
+def test_copy_full_result_runs_on_worker_thread(win):
+    """copy_full_result 不得在 UI 线程上执行 copy_to_clipboard（可能 sleep）。"""
+    threads = []
+
+    def fake_copy(content):
+        threads.append(threading.current_thread())
+        return True
+
+    win.context.clipboard.copy_to_clipboard = fake_copy
+    win.session.last_result = "手动复制内容"
+
+    win.copy_full_result()
+    assert win.wait_idle(timeout=5.0) is True
+
+    assert threads and threads[0] is not threading.current_thread()
+    assert "已复制到剪贴板" in win.run_step.status.cget("text")
+
+
+def test_copy_history_entry_runs_on_worker_thread(win):
+    """剪贴板历史复制同样要离开 UI 线程执行。"""
+    threads = []
+
+    def fake_copy(content):
+        threads.append(threading.current_thread())
+        return True
+
+    win.context.clipboard.copy_to_clipboard = fake_copy
+
+    win._copy_history_entry("历史记录内容")
+    assert win.wait_idle(timeout=5.0) is True
+
+    assert threads and threads[0] is not threading.current_thread()
     assert "已复制到剪贴板" in win.run_step.status.cget("text")
 
 

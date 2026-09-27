@@ -1,5 +1,10 @@
 # OCRX 2.0 开发文档
 
+> 注：本文部分工具链（Black/Flake8/MyPy、`setup.py`）与 `handlers/`
+> 示例已过时——仓库实际使用 ruff + `build_package.bat`，GUI 分层为
+> `views/` + `controllers/`（无 `handlers/`）。现行约定以 `AGENTS.md`
+> 为准。
+
 ## 开发环境设置
 
 ### 1. 环境要求
@@ -103,77 +108,38 @@ def merge_contents(
 
 ## 模块开发指南
 
-### 1. 添加新处理器
+### 1. 添加新视图 / 控制器
 
-#### 步骤 1：创建处理器文件
+旧的 `ocrx/gui/handlers/`（`BaseHandler`）已删除，不要再往该目录加文件。
+当前分层：
+
+- 视图 `ocrx/gui/views/`：只负责渲染和回传用户意图（回调），不直接调用
+  OCR API 或做文件 IO。
+- 控制器 `ocrx/gui/controllers/`：封装工作流（如 `SaveController`、
+  `CopyController`），失败以返回值上抛，不让异常进入 mainloop。
+- `MainWindow`（`ocrx/gui/main_window.py`）：向导外壳，负责装配、导航、
+  生命周期和任务编排；工作线程的结果经队列 + 泵回到 UI 线程。
 
 ```python
-# ocrx/gui/handlers/my_handler.py
-from .base_handler import BaseHandler
+# ocrx/gui/controllers/my_controller.py
+class MyController:
+    def __init__(self, service, logger=None):
+        self.service = service
+        self.logger = logger
 
-class MyHandler(BaseHandler):
-    """我的处理器"""
-
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        # 初始化代码
-
-    def process(self, data: str) -> bool:
-        """
-        处理数据
-
-        Args:
-            data: 输入数据
-
-        Returns:
-            是否成功
-        """
+    def run(self, data: str):
+        """执行工作流；返回 (ok, payload)，不向 UI 抛异常。"""
         try:
-            # 处理逻辑
-            self._update_status("处理中...")
-            
-            # 调用服务
-            result = self.processing_service.do_something(data)
-            
-            # 显示结果
-            self._display_result(result)
-            
-            return True
-        except Exception as e:
-            self.logger.error(f"处理失败：{e}")
-            return False
+            return True, self.service.do_something(data)
+        except Exception as exc:
+            return False, str(exc)
 ```
 
-#### 步骤 2：导出处理器
-
 ```python
-# ocrx/gui/handlers/__init__.py
-from .my_handler import MyHandler
-
-__all__ = [
-    # ... 其他处理器
-    "MyHandler",
-]
-```
-
-#### 步骤 3：在主窗口中使用
-
-```python
-# ocrx/gui/main_window.py
-from .handlers import MyHandler
-
-class MainWindow:
-    def _init_handlers(self):
-        # ... 其他处理器
-        self.my_handler = MyHandler(self)
-
-    def create_widgets(self):
-        # 创建按钮
-        ttk.Button(
-            button_frame,
-            text="我的功能",
-            command=self.my_handler.process
-        ).pack(side=tk.LEFT, padx=5)
+# ocrx/gui/views/my_step.py —— 视图只发意图
+# 在 MainWindow 中装配：
+#   self.run_step.set_on_save(self.run_save_now)
+#   controller = MyController(self.context.service, logger=self.context.logger)
 ```
 
 ### 2. 修改 OCR 引擎
@@ -462,15 +428,18 @@ class OCREngine:
     def process_images_batch(prompt, images, file_stem, progress_callback) -> List[Tuple[Tuple[str, int], str]]
 ```
 
-### BaseHandler
+### GUI Controllers
 
 ```python
-class BaseHandler:
-    def _update_status(status: str)
-    def _update_progress(current: int, total: int, phase: str)
-    def _display_result(content: str)
-    def show_message(title: str, message: str, msg_type: str)
+class SaveController:
+    def run(file_paths, prompt, page_range, example_images=None, config=None) -> SaveResult
+
+class CopyController:
+    def run(file_paths, prompt, page_range, example_images=None, config=None) -> Tuple[bool, str]
 ```
+
+旧 `BaseHandler` 已删除；工作流由 `ocrx/gui/controllers/` 承担，
+  视图由 `ocrx/gui/views/` 承担。完整约定见 `AGENTS.md`。
 
 ---
 

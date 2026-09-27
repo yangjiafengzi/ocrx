@@ -55,6 +55,9 @@ class MainWindow:
         self._job_thread: Optional[threading.Thread] = None
         self._outcome_queue: queue.Queue = queue.Queue()
         self._log_queue: queue.Queue = queue.Queue()
+        self._copy_result_queue: queue.Queue = queue.Queue()
+        self._copy_threads: set = set()
+        self._copy_threads_lock = threading.Lock()
         self._closed = False
         self._pump_after_id: Optional[str] = None
         self._wizard_ready = False
@@ -207,14 +210,59 @@ class MainWindow:
         if not content:
             self.run_step.set_status("没有可复制的结果")
             return
-        ok = False
-        try:
-            ok = bool(self.context.clipboard.copy_to_clipboard(content))
-        except Exception:
+
+        def on_done(ok: bool) -> None:
+            self.run_step.set_status("已复制到剪贴板" if ok else "复制到剪贴板失败")
+            if ok:
+                self.clipboard_view.refresh()
+
+        self._copy_text_async(content, on_done)
+
+    def _copy_text_async(self, content: str, on_done=None) -> None:
+        """在工作线程执行 copy_to_clipboard，结果经队列回到 UI 线程。
+
+        ClipboardHistory.copy_to_clipboard 重试时会 time.sleep，绝不能在
+        Tk UI 线程上调用。回调也必须回到 UI 线程，因此走队列 + 泵
+        （wait_idle / _pump_ui）而不是 root.after。
+        """
+
+        def worker() -> None:
             ok = False
-        self.run_step.set_status("已复制到剪贴板" if ok else "复制到剪贴板失败")
-        if ok:
-            self.clipboard_view.refresh()
+            try:
+                ok = bool(self.context.clipboard.copy_to_clipboard(content))
+            except Exception:
+                ok = False
+            try:
+                self._copy_result_queue.put((on_done, ok))
+            except Exception:
+                pass
+            with self._copy_threads_lock:
+                self._copy_threads.discard(threading.current_thread())
+
+        thread = threading.Thread(
+            target=worker, daemon=True, name="ocrx-clipboard-copy"
+        )
+        with self._copy_threads_lock:
+            self._copy_threads.add(thread)
+        thread.start()
+
+    def _drain_copy_results(self) -> None:
+        while True:
+            try:
+                on_done, ok = self._copy_result_queue.get_nowait()
+            except queue.Empty:
+                return
+            except Exception:
+                return
+            if on_done is not None:
+                try:
+                    on_done(ok)
+                except Exception:
+                    pass
+
+    def _has_pending_copies(self) -> bool:
+        with self._copy_threads_lock:
+            return bool(self._copy_threads)
 
     def _start_job(self, mode: str) -> None:
         if self._running:
@@ -283,7 +331,19 @@ class MainWindow:
                         service, logger=self.context.logger
                     ).run(file_paths, prompt, page_range, example_images)
                     if result.ok:
-                        outcome = ("save_ok", self._collect_saved_text(result.results))
+                        results = result.results or {}
+                        ok_count = sum(1 for ok, _ in results.values() if ok)
+                        total = len(results)
+                        text = self._collect_saved_text(results)
+                        if ok_count == 0:
+                            outcome = (
+                                "error",
+                                f"识别并保存失败：成功 0/{total} 个文件",
+                            )
+                        elif ok_count < total:
+                            outcome = ("save_partial", (text, ok_count, total))
+                        else:
+                            outcome = ("save_ok", text)
                     else:
                         outcome = ("error", result.error or "识别并保存失败")
                 else:
@@ -322,19 +382,24 @@ class MainWindow:
             self.session.last_result = text
             self.run_step.set_result(text)
             self.run_step.set_status("识别并保存完成")
+        elif kind == "save_partial":
+            text, ok_count, total = payload
+            text = text or f"处理完成：成功 {ok_count}/{total} 个文件"
+            self.session.last_result = text
+            self.run_step.set_result(text)
+            self.run_step.set_status(f"部分保存成功：成功 {ok_count}/{total} 个文件")
         elif kind == "copy_ok":
             text = payload or ""
             self.session.last_result = text
             self.run_step.set_result(text)
-            copied = False
-            try:
-                copied = bool(self.context.clipboard.copy_to_clipboard(text))
-            except Exception:
-                copied = False
-            self.run_step.set_status(
-                "已复制到剪贴板" if copied else "自动复制失败，结果已显示，请手动复制"
-            )
-            self.clipboard_view.refresh()
+
+            def on_done(ok: bool) -> None:
+                self.run_step.set_status(
+                    "已复制到剪贴板" if ok else "自动复制失败，结果已显示，请手动复制"
+                )
+                self.clipboard_view.refresh()
+
+            self._copy_text_async(text, on_done)
         else:
             message = str(payload or "任务失败")
             self.run_step.set_status(message)
@@ -370,7 +435,10 @@ class MainWindow:
                 return not self._running
             self._drain_logs()
             self._drain_outcome()
-            if not self._running:
+            self._drain_copy_results()
+            if not self._running and not self._has_pending_copies():
+                # 拷贝线程先入队再退出；此处再排一次以覆盖“刚入队即结束”的竞态。
+                self._drain_copy_results()
                 try:
                     self.root.update()
                 except Exception:
@@ -410,12 +478,11 @@ class MainWindow:
         if not content:
             self.run_step.set_status("未选中可复制的记录")
             return
-        ok = False
-        try:
-            ok = bool(self.context.clipboard.copy_to_clipboard(content))
-        except Exception:
-            ok = False
-        self.run_step.set_status("已复制到剪贴板" if ok else "复制到剪贴板失败")
+
+        def on_done(ok: bool) -> None:
+            self.run_step.set_status("已复制到剪贴板" if ok else "复制到剪贴板失败")
+
+        self._copy_text_async(content, on_done)
 
     def _clear_history(self) -> None:
         try:
@@ -488,6 +555,7 @@ class MainWindow:
                 return
             self._drain_logs()
             self._drain_outcome()
+            self._drain_copy_results()
             self._schedule_pump()
         except tk.TclError:
             self._closed = True

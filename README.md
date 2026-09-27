@@ -124,17 +124,15 @@ ocrx2.0/
 │   ├── example_library.py      # 示例库管理（v2.1.0新增）
 │   └── gui/                    # GUI 模块
 │       ├── __init__.py
-│       ├── main_window.py      # 主窗口
+│       ├── main_window.py      # 主窗口（向导外壳 + 任务编排）
+│       ├── app_context.py      # 共享服务与会话状态
 │       ├── example_manager_ui.py  # 示例管理界面（v2.1.0新增）
-│       └── handlers/           # 处理器
-│           ├── __init__.py
-│           ├── base_handler.py
-│           ├── save_handler.py
-│           ├── copy_handler.py
-│           ├── clipboard_handler.py
-│           ├── result_handler.py
-│           ├── prompt_handler.py
-│           └── progress_handler.py
+│       ├── views/              # 向导步骤与辅助视图
+│       │   ├── config_step.py / files_step.py / prompt_step.py / run_step.py
+│       │   └── examples_view.py / clipboard_view.py / logs_view.py
+│       └── controllers/        # 工作流控制器
+│           ├── save_controller.py / copy_controller.py
+│           └── prompt_controller.py / progress_controller.py
 ```
 
 ## 架构设计
@@ -142,8 +140,9 @@ ocrx2.0/
 ### 分层架构
 
 1. **表示层（GUI）**：
-   - `main_window.py`：主窗口界面
-   - `handlers/`：功能处理器
+   - `main_window.py`：向导外壳（导航、生命周期、任务编排）
+   - `views/`：向导步骤与辅助视图（只渲染和回传用户意图）
+   - `controllers/`：工作流控制器（save/copy/prompt/progress）
 
 2. **业务逻辑层**：
    - `processing_service.py`：处理服务
@@ -161,7 +160,7 @@ ocrx2.0/
 ### 核心流程
 
 ```
-用户操作 → GUI → Handler → ProcessingService → OCREngine → API
+用户操作 → Views → Controllers → ProcessingService → OCREngine → API
                 ↓
             进度回调 ← 结果合并 ← 保存/复制
 ```
@@ -201,12 +200,14 @@ ocrx2.0/
 
 ## 开发文档
 
-### 添加新处理器
+### 添加新视图 / 控制器
 
-1. 在 `handlers/` 目录下创建新文件
-2. 继承 `BaseHandler`
-3. 实现必要的方法
-4. 在 `main_window.py` 中初始化和使用
+1. 视图放 `ocrx/gui/views/`：只负责渲染与回调，不直接调用 OCR API
+2. 工作流逻辑放 `ocrx/gui/controllers/`：通过 `AppContext` 使用服务
+3. 在 `main_window.py` 中装配视图与控制器
+
+> 旧的 `handlers/`（BaseHandler）目录已删除；本文档之外的完整架构与开发
+> 约定以 `AGENTS.md` 为准。
 
 ### 修改 OCR 引擎
 
