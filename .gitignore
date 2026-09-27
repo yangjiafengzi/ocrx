@@ -51,7 +51,10 @@ temp/
 .coverage
 .coverage.*
 htmlcov/
+/.compose/
 
 # Keep these
 !assets/README.txt
 !docs/*.md
+
+/.worktrees/
