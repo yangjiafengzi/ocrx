@@ -1,523 +1,104 @@
 # -- coding: utf-8 --
-"""
-真实 UI 窗口测试（需要可用的桌面环境，否则自动跳过）。
+"""真实 UI 窗口冒烟测试（需要可用的桌面环境，否则自动跳过）。
 
-使用 Miniconda 等自带完整 Tcl/Tk 的 Python 运行：
-    C:\\Users\\DHQ\\miniconda3\\python.exe -m pytest tests/test_ui_window.py -v
+旧 notebook 主题/滚动条回归用例已随 ttk 旧界面一并移除；
+滚动条工具覆盖见 tests/test_gui_more.py，外壳行为见
+tests/test_main_window_shell.py。
 """
 
-import tkinter as tk
-from tkinter import ttk
 import time
-from types import SimpleNamespace
 
 import pytest
 
-from ocrx.config import ConfigManager
-from ocrx.example_library import ExampleLibrary
-from ocrx.gui import main_window as mw_mod
-from ocrx.logger import StructuredLogger
+from ocrx.gui.app_context import AppContext
+from ocrx.gui.main_window import MainWindow
 
 
 @pytest.fixture
-def ui_app(tmp_path, monkeypatch):
+def ui_app(tmp_path):
+    tkinter = pytest.importorskip("tkinter")
     root = None
     last_error = None
     for _ in range(3):
         try:
-            root = tk.Tk()
+            root = tkinter.Tk()
             break
-        except tk.TclError as e:
+        except tkinter.TclError as e:
             last_error = e
             time.sleep(0.5)
     if root is None:
         pytest.skip(f"当前环境无可用 Tcl/Tk 显示：{last_error}")
-
-    class TestLogger(StructuredLogger):
-        def __init__(self, *args, **kwargs):
-            kwargs.setdefault("log_file_path", str(tmp_path / "ui.log"))
-            super().__init__(*args, **kwargs)
-
-    test_cfg = ConfigManager(str(tmp_path / "ui_config.json"))
-    test_cfg.load()
-
-    monkeypatch.setattr(mw_mod, "ConfigManager", lambda: test_cfg)
-    monkeypatch.setattr(mw_mod, "StructuredLogger", TestLogger)
-    monkeypatch.setattr(
-        mw_mod,
-        "ExampleLibrary",
-        lambda: ExampleLibrary(str(tmp_path / "example_library")),
+    root.withdraw()
+    ctx = AppContext(
+        config_path=str(tmp_path / "ui_config.json"),
+        example_path=str(tmp_path / "example_library"),
+        log_path=str(tmp_path / "ui.log"),
     )
-
-    app = mw_mod.MainWindow(root)
+    app = MainWindow(root, context=ctx)
     root.update_idletasks()
     root.update()
     yield app
     try:
-        app.logger.close()
-    finally:
-        root.destroy()
+        app.on_closing()
+    except Exception:
+        try:
+            root.destroy()
+        except Exception:
+            pass
 
 
-def test_window_title_and_size(ui_app):
-    assert ui_app.root.title() == "OCRX-智能文字识别"
+def test_window_title(ui_app):
+    assert "OCRX" in ui_app.root.title()
     assert ui_app.root.winfo_width() >= 900
-    assert ui_app.root.winfo_height() >= 700
+    assert ui_app.root.winfo_height() >= 680
 
 
-def test_notebook_tabs(ui_app):
-    tabs = [ui_app.notebook.tab(tab, "text") for tab in ui_app.notebook.tabs()]
-    assert tabs == ["主要配置", "少样本示例库", "运行日志", "剪贴板历史", "识别结果"]
-
-
-def test_key_widgets_exist(ui_app):
-    assert ui_app.base_url_entry is not None
-    assert ui_app.api_key_entry is not None
-    assert ui_app.model_name_entry is not None
-    assert ui_app.file_paths_entry is not None
-    assert ui_app.output_dir_entry is not None
-    assert ui_app.prompt_text is not None
-    assert ui_app.progress_bar is not None
-    assert ui_app.result_text is not None
-    assert ui_app.clipboard_tree is not None
-
-
-def test_bottom_buttons(ui_app):
-    texts = []
-
-    def walk(widget):
-        for child in widget.winfo_children():
-            try:
-                text = child.cget("text")
-                if text:
-                    texts.append(text)
-            except tk.TclError:
-                pass
-            walk(child)
-
-    walk(ui_app.root)
-    for expected in ["识别并保存", "识别并复制", "停止", "保存配置", "重置配置", "关于"]:
-        assert expected in texts, f"缺少按钮：{expected}"
-
-
-def test_prompt_presets_loaded(ui_app):
-    values = list(ui_app.prompt_preset_combobox["values"])
-    assert "手写笔记" in values
-    assert "印刷材料" in values
-    assert ui_app.prompt_preset_var.get() == "手写笔记"
-    # 启动时应自动填充默认预设内容，而不是留空
-    content = ui_app.prompt_text.get("1.0", tk.END)
-    assert "手写笔记识别专家" in content
-
-
-def test_prompt_preset_selection_updates_text(ui_app):
-    ui_app.prompt_preset_var.set("印刷材料")
-    ui_app.on_prompt_preset_selected()
-    content = ui_app.prompt_text.get("1.0", tk.END)
-    assert "光学字符识别" in content
-
-
-def test_result_text_initial_state(ui_app):
-    assert ui_app.result_text.cget("state") == "disabled"
-    content = ui_app.result_text.get("1.0", tk.END)
-    assert "识别结果将显示在这里" in content
-
-
-def test_display_result_switches_tab_and_disables(ui_app):
-    ui_app._display_result("窗口测试结果")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    assert ui_app.notebook.select() == str(ui_app.result_frame)
-    content = ui_app.result_text.get("1.0", tk.END).strip()
-    assert content == "窗口测试结果"
-    assert ui_app.result_text.cget("state") == "disabled"
-
-
-def test_example_library_tab_refresh(ui_app):
-    # 切换到少样本示例库页，确认列表和统计标签存在
-    for i, tab_id in enumerate(ui_app.notebook.tabs()):
-        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.root.update_idletasks()
-    assert ui_app.example_manager_ui.stats_label.cget("text") == "共 0 个示例"
-    assert ui_app.example_manager_ui.tree.get_children() == ()
-
-
-def test_save_config_silent_on_close(ui_app, monkeypatch):
-    """回归测试：关闭窗口时保存配置不应弹出对话框。"""
-    dialogs = []
-    monkeypatch.setattr(mw_mod.messagebox, "showinfo", lambda *a: dialogs.append(a))
-    ui_app.save_config(show_dialog=False)
-    assert dialogs == []
-
-
-def test_config_page_scrollable_when_window_small(ui_app):
-    """回归测试：窗口缩小时配置页应有纵向滚动条，滚轮可滚动到被遮挡内容。"""
-    ui_app.root.minsize(400, 300)
-    ui_app.root.geometry("900x450")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    canvas = ui_app.config_canvas
-    assert canvas.winfo_exists()
-    assert ui_app.config_scrollbar.winfo_exists()
-    assert ui_app.config_scrollbar.winfo_ismapped(), "窗口缩小时滚动条应可见"
-
-    # 内容应高于可视区域（复现“被遮挡”场景）
-    top, bottom = canvas.yview()
-    assert bottom < 1.0, "配置页内容未超出可视区，无法复现遮挡问题"
-
-    # 向下滚动应生效
-    before = canvas.yview()
-    ui_app._on_config_mousewheel(SimpleNamespace(delta=-120))
-    ui_app.root.update_idletasks()
-    after = canvas.yview()
-    assert after[0] > before[0], "鼠标滚轮未生效"
-
-    # 向上滚回顶部
-    ui_app._on_config_mousewheel(SimpleNamespace(delta=120))
-    ui_app.root.update_idletasks()
-    assert canvas.yview()[0] < after[0]
-
-def test_all_text_scrollbars_unified(ui_app):
-    """回归测试：提示词/日志/结果页的滚动条都应是统一的 ttk 细窄样式。"""
-    for widget in (ui_app.prompt_text, ui_app.log_text, ui_app.result_text):
-        assert isinstance(widget.vbar, ttk.Scrollbar), (
-            f"{widget} 的滚动条未统一为 ttk 样式"
-        )
-    # 日志页为深色控制台，滚动条应使用深色适配样式
-    assert str(ui_app.log_text.vbar.cget("style")) == "Dark.Vertical.TScrollbar"
-    assert str(ui_app.prompt_text.vbar.cget("style")) == "Vertical.TScrollbar"
-    assert str(ui_app.result_text.vbar.cget("style")) == "Vertical.TScrollbar"
-    # 滚动条应为“一整条深色滑轨 + 浅色滑块”
-    style = ttk.Style(ui_app.root)
-    assert style.lookup("Vertical.TScrollbar", "troughcolor") == "#94A3B8"
-    assert style.lookup("Vertical.TScrollbar", "background") == "#E2E8F0"
-    assert style.lookup("Dark.Vertical.TScrollbar", "troughcolor") == "#334155"
-    assert style.lookup("Dark.Vertical.TScrollbar", "background") == "#E2E8F0"
-
-
-def test_bottom_buttons_visible_after_shrink(ui_app):
-    """回归测试：手动缩小窗口后，底部操作按钮不能被挤出可视区。"""
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    bar = ui_app.bottom_button_frame
-    assert bar.winfo_ismapped(), "缩小窗口后底部按钮栏不应消失"
-    win_h = ui_app.root.winfo_height()
-    y = bar.winfo_rooty() - ui_app.root.winfo_rooty()
-    assert y >= 0, "底部按钮栏顶部不应超出窗口"
-    assert y + bar.winfo_height() <= win_h + 2, "底部按钮栏不应超出窗口底部"
-
-
-def _drag_thumb(vbar, distance=None, steps=12):
-    """模拟鼠标拖拽滚动条滑块。"""
-    root = vbar.winfo_toplevel()
-    root.update_idletasks()
-    root.update()
-    first, last = (float(x) for x in vbar.get())
-    if distance is None:
-        # 已在底部时向上拖，否则向下拖（日志页会自动滚到底部）
-        distance = -60 if last >= 1.0 - 1e-6 else 60
-    height = vbar.winfo_height()
-    cx = vbar.winfo_width() // 2
-    ty = int(first * height)
-    th = max(10, int((last - first) * height))
-    vbar.event_generate("<ButtonPress-1>", x=cx, y=ty + th // 2)
-    for i in range(1, steps + 1):
-        vbar.event_generate(
-            "<B1-Motion>",
-            x=cx,
-            y=ty + th // 2 + i * (distance // steps),
-        )
-    vbar.event_generate("<ButtonRelease-1>", x=cx, y=ty + th // 2 + distance)
-    root.update_idletasks()
-    root.update()
-
-
-def test_config_scrollbar_thumb_draggable(ui_app):
-    """回归测试：配置页滚动条滑块必须能拖拽滚动。"""
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    vbar = ui_app.config_scrollbar
-    assert vbar.winfo_ismapped()
-    before = ui_app.config_canvas.yview()
-    _drag_thumb(vbar, distance=80)
-    after = ui_app.config_canvas.yview()
-    assert after != before, "配置页滚动条滑块拖不动"
-
-
-def test_text_scrollbar_thumb_draggable(ui_app):
-    """回归测试：文本框滚动条滑块必须能拖拽滚动。"""
-    vbar = ui_app.prompt_text.vbar
-    assert vbar.winfo_ismapped(), "提示词内容较长，滚动条应可见"
-    before = ui_app.prompt_text.yview()
-    _drag_thumb(vbar, distance=40)
-    after = ui_app.prompt_text.yview()
-    assert after != before, "提示词滚动条滑块拖不动"
-
-
-def test_dark_log_scrollbar_thumb_draggable(ui_app):
-    """回归测试：深色日志页滚动条滑块必须能拖拽滚动。"""
-    # 直接填充日志文本，避免日志自动滚动到底部干扰拖拽验证
-    ui_app.log_text.config(state="normal")
-    for i in range(60):
-        ui_app.log_text.insert("end", f"拖拽测试日志行 {i}\n")
-    ui_app.log_text.config(state="disabled")
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "运行日志":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    vbar = ui_app.log_text.vbar
-    assert vbar.winfo_ismapped(), "日志内容较长，滚动条应可见"
-    before = ui_app.log_text.yview()
-    _drag_thumb(vbar, distance=40)
-    after = ui_app.log_text.yview()
-    assert after != before, "日志滚动条滑块拖不动"
-
-
-def test_tree_scrollbar_thumb_draggable(ui_app):
-    """回归测试：剪贴板历史表格滚动条滑块必须能拖拽滚动。"""
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    for i in range(30):
-        ui_app.clipboard_history.add_record(f"记录 {i}", success=True, method="tkinter")
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "剪贴板历史":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    handler = ui_app.clipboard_handler
-    handler.refresh_history()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    vbar = handler.tree.master.winfo_children()
-    scrollbar = next(w for w in vbar if isinstance(w, ttk.Scrollbar))
-    assert scrollbar.winfo_ismapped()
-    first, last = (float(x) for x in scrollbar.get())
-    assert last < 1.0 - 1e-6, "剪贴板表格内容应超出可视区"
-    before = handler.tree.yview()
-    _drag_thumb(scrollbar)
-    after = handler.tree.yview()
-    assert after != before, "剪贴板表格滚动条滑块拖不动"
-
-
-def test_config_scrollbar_never_full_when_visible(ui_app):
-    """配置页滚动条可见时必须有真实溢出（不出现满条假滑块）。"""
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    if ui_app.config_scrollbar.winfo_ismapped():
-        first, last = (float(x) for x in ui_app.config_scrollbar.get())
-        assert last < 1.0 - 1e-6, "配置页滚动条内容放得下却显示满条滑块"
-
-
-def _drag_thumb_h(vbar, distance=40, steps=8):
-    """模拟鼠标横向拖拽滚动条滑块。"""
-    root = vbar.winfo_toplevel()
-    root.update_idletasks()
-    root.update()
-    first, last = (float(x) for x in vbar.get())
-    width = vbar.winfo_width()
-    cy = vbar.winfo_height() // 2
-    tx = int(first * width)
-    tw = max(10, int((last - first) * width))
-    vbar.event_generate("<ButtonPress-1>", x=tx + tw // 2, y=cy)
-    for i in range(1, steps + 1):
-        vbar.event_generate(
-            "<B1-Motion>",
-            x=tx + tw // 2 + i * (distance // steps),
-            y=cy,
-        )
-    vbar.event_generate("<ButtonRelease-1>", x=tx + tw // 2 + distance, y=cy)
-    root.update_idletasks()
-    root.update()
-
-
-def test_scrollbar_trough_click_pages(ui_app):
-    """回归测试：点击滚动条滑轨（滑块下方）应能翻页。"""
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    vbar = ui_app.config_scrollbar
-    assert vbar.winfo_ismapped()
-    first, last = (float(x) for x in vbar.get())
-    h = vbar.winfo_height()
-    cx = vbar.winfo_width() // 2
-    below = min(h - 2, int(last * h) + 20)
-    before = ui_app.config_canvas.yview()
-    vbar.event_generate("<Button-1>", x=cx, y=below)
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    after = ui_app.config_canvas.yview()
-    assert after[0] > before[0], "点击滑轨下方没有翻页"
-
-
-def test_example_tree_wheel_and_horizontal_drag(ui_app, sample_png):
-    """回归测试：示例库表格滚轮可滚、横向滑块可拖。"""
-    for i in range(12):
-        ui_app.example_library.add_example(
-            str(sample_png), f"示例文本 {i} " * 8, f"标签 {i}"
-        )
-    ui_app.root.minsize(300, 250)
-    ui_app.root.geometry("900x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.example_manager_ui.refresh_list()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    tree = ui_app.example_manager_ui.tree
-    before = tree.yview()
-    tree.event_generate("<MouseWheel>", delta=-120)
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    after = tree.yview()
-    assert after != before, "示例库表格滚轮无效"
-
-    # 缩小宽度制造横向溢出
-    ui_app.root.geometry("520x380")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    scrollbars = [
-        w for w in tree.master.winfo_children() if isinstance(w, ttk.Scrollbar)
+def test_wizard_shell_built(ui_app):
+    assert ui_app.wizard is not None
+    assert ui_app.current_step == 0
+    assert [btn.cget("text") for btn in ui_app.wizard.buttons] == [
+        "1. 配置",
+        "2. 文件",
+        "3. 提示词",
+        "4. 执行",
     ]
-    hbar = next(w for w in scrollbars if str(w.cget("orient")) == "horizontal")
-    first, last = (float(x) for x in tree.xview())
-    assert last < 1.0 - 1e-6, "示例库内容应横向溢出"
-    before = tree.xview()
-    _drag_thumb_h(hbar, distance=40)
-    after = tree.xview()
-    assert after != before, "示例库横向滑块拖不动"
+    assert ui_app.container is not None
 
 
-def test_text_scrollbar_autohide_when_fits(ui_app):
-    """回归测试：文本框内容放得下时滚动条隐藏，溢出时出现。"""
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "识别结果":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    assert not ui_app.result_text.vbar.winfo_ismapped(), "短内容不应显示滚动条"
-
-    ui_app.result_text.config(state="normal")
-    for i in range(80):
-        ui_app.result_text.insert("end", f"结果行 {i}\n")
-    ui_app.result_text.config(state="disabled")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-    assert ui_app.result_text.vbar.winfo_ismapped(), "长内容应显示滚动条"
-
-
-def test_log_many_lines_keeps_visible_thumb(ui_app):
-    """回归测试：日志行极多时滑块不能细到消失（应有最小尺寸）。"""
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "运行日志":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.log_text.config(state="normal")
-    for i in range(2000):
-        ui_app.log_text.insert("end", f"日志行 {i}\n")
-    ui_app.log_text.config(state="disabled")
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    vbar = ui_app.log_text.vbar
-    assert vbar.winfo_ismapped(), "大量日志时应显示滚动条"
-    first, last = (float(x) for x in vbar.get())
-    assert last - first >= 0.05, "滑块不应细到消失"
-
-
-def test_trees_hide_when_content_fits(ui_app, sample_png):
-    """回归测试：示例库内容少且放得下时，横纵滚动条都应隐藏。"""
-    for i in range(3):
-        ui_app.example_library.add_example(
-            str(sample_png), f"示例 {i} 文本", f"标签 {i}"
-        )
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.example_manager_ui.refresh_list()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    tree = ui_app.example_manager_ui.tree
-    scrollbars = [
-        w for w in tree.master.winfo_children() if isinstance(w, ttk.Scrollbar)
+def test_run_step_action_buttons(ui_app):
+    texts = [
+        str(ui_app.run_step.save_btn.cget("text")),
+        str(ui_app.run_step.copy_btn.cget("text")),
+        str(ui_app.run_step.stop_btn.cget("text")),
     ]
-    assert scrollbars, "应能找到示例库滚动条"
-    assert all(not w.winfo_ismapped() for w in scrollbars), (
-        "内容放得下时不应显示满条假滑块"
-    )
+    assert texts == ["识别并保存", "识别并复制", "停止"]
+    assert str(ui_app.run_step.save_btn.cget("state")) == "normal"
+    assert str(ui_app.run_step.stop_btn.cget("state")) == "disabled"
 
 
-def test_example_row_double_click_opens_editor(ui_app, sample_png, monkeypatch):
-    """回归测试：双击示例行应打开预览编辑框，保存后更新库。"""
-    import ocrx.gui.example_manager_ui as emu_mod
+def test_secondary_surfaces_present(ui_app):
+    assert ui_app.secondary is not None
+    for title in ("示例库", "剪贴板", "运行日志"):
+        assert ui_app.secondary.tab(title) is not None
+    assert ui_app.examples_view.manager is not None
+    assert ui_app.clipboard_view.tree is not None
+    assert ui_app.logs_view.textbox is not None
 
-    monkeypatch.setattr(emu_mod.messagebox, "showinfo", lambda *a, **k: None)
-    monkeypatch.setattr(emu_mod.messagebox, "showwarning", lambda *a, **k: None)
 
-    ex = ui_app.example_library.add_example(
-        str(sample_png), "原始识别文本", "原始描述"
-    )
-    for tab_id in ui_app.notebook.tabs():
-        if ui_app.notebook.tab(tab_id, "text") == "少样本示例库":
-            ui_app.notebook.select(tab_id)
-            break
-    ui_app.example_manager_ui.refresh_list()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
+def test_config_fields_present(ui_app):
+    assert set(ui_app.config_step.fields) == {
+        "BASE_URL",
+        "API_KEY",
+        "MODEL_NAME",
+        "OUTPUT_DIR",
+        "MAX_WORKERS",
+        "PDF_SCALE_FACTOR",
+    }
 
-    manager = ui_app.example_manager_ui
-    tree = manager.tree
-    first_item = tree.get_children()[0]
-    bbox = tree.bbox(first_item)
-    click_x = bbox[0] + bbox[2] // 2 if bbox else 200
-    click_y = bbox[1] + bbox[3] // 2 if bbox else 20
-    manager._on_row_double_click(SimpleNamespace(x=click_x, y=click_y))
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
 
-    assert manager._editor_dialog is not None
-    assert manager._editor_dialog.winfo_exists(), "双击后应弹出编辑框"
-
-    manager._editor_text.delete("1.0", tk.END)
-    manager._editor_text.insert("1.0", "修改后的识别文本")
-    manager._editor_desc.delete(0, tk.END)
-    manager._editor_desc.insert(0, "修改后的描述")
-    manager._editor_on_save()
-    ui_app.root.update_idletasks()
-    ui_app.root.update()
-
-    updated = ui_app.example_library.get_example(ex.id)
-    assert updated.text == "修改后的识别文本"
-    assert updated.description == "修改后的描述"
-    assert not manager._editor_dialog.winfo_exists(), "保存后编辑框应关闭"
+def test_save_config_silent_on_close(ui_app, tmp_path):
+    """回归测试：关闭窗口时保存配置不弹对话框，且写出配置文件。"""
+    ui_app.config_step.fields["MODEL_NAME"].delete(0, "end")
+    ui_app.config_step.fields["MODEL_NAME"].insert(0, "smoke-model")
+    ui_app.on_closing()
+    assert "smoke-model" in (tmp_path / "ui_config.json").read_text(encoding="utf-8")

@@ -3,7 +3,7 @@
 端到端测试：真实 PDF/图片 → 真实处理链 → 本地 OpenAI 兼容 Mock API。
 
 覆盖：保存/复制模式、多页 PDF、页码范围、少样本、网络重试、业务重试、
-API 全失败、取消，以及 GUI 处理器接入真实处理服务。
+API 全失败、取消，以及 GUI 控制器接入真实处理服务。
 """
 
 import json
@@ -11,7 +11,6 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 
 import fitz
 import pytest
@@ -19,9 +18,8 @@ from PIL import Image
 
 import ocrx.ocr_client as oc
 import ocrx.retry_utils as ru
-from ocrx.clipboard import ClipboardHistory
-from ocrx.gui.handlers.copy_handler import CopyHandler
-from ocrx.gui.handlers.save_handler import SaveHandler
+from ocrx.gui.controllers.copy_controller import CopyController
+from ocrx.gui.controllers.save_controller import SaveController
 from ocrx.logger import StructuredLogger
 from ocrx.processing_service import ProcessingService
 
@@ -136,26 +134,6 @@ def make_service(tmp_path, server, **kwargs):
         logger_inst=StructuredLogger(str(tmp_path / "e2e.log")),
         **kwargs,
     )
-
-
-class FakeMainWindow:
-    def __init__(self, tmp_path):
-        self.root = SimpleNamespace(after=lambda *a: None)
-        self.logger = StructuredLogger(str(tmp_path / "gui_e2e.log"))
-        self.clipboard_history = ClipboardHistory()
-        self.processing_service = None
-        self.DISPLAY_MAX_LENGTH = 5000
-        self.COPY_MAX_PAGES = 10
-        self.displayed = []
-
-    def _on_status_update(self, status):
-        pass
-
-    def _on_progress_update(self, *args):
-        pass
-
-    def _display_result(self, content):
-        self.displayed.append(content)
 
 
 def test_e2e_pdf_pipeline_saves_markdown(tmp_path, e2e_server, make_pdf):
@@ -334,27 +312,25 @@ def test_e2e_cancel_stops_pipeline(tmp_path, e2e_server):
         server.stop()
 
 
-def test_e2e_gui_save_handler_with_real_service(tmp_path, e2e_server):
-    mw = FakeMainWindow(tmp_path)
-    mw.processing_service = make_service(tmp_path, e2e_server)
-    handler = SaveHandler(mw)
+def test_e2e_gui_save_controller_with_real_service(tmp_path, e2e_server):
+    service = make_service(tmp_path, e2e_server)
+    controller = SaveController(service)
     png = make_png(tmp_path)
 
-    results = handler.process_files([str(png)], "识别", "")
-    assert results["pic"][0] is True
+    result = controller.run([str(png)], "识别", "")
+    assert result.ok is True
+    assert result.error == ""
+    assert result.results["pic"][0] is True
     assert (tmp_path / "pic_ocr.md").exists()
-    assert mw.displayed and "识别结果-1" in mw.displayed[0]
     assert e2e_server.wait_requests(1)
 
 
-def test_e2e_gui_copy_handler_with_real_service(tmp_path, e2e_server):
-    mw = FakeMainWindow(tmp_path)
-    mw.processing_service = make_service(tmp_path, e2e_server)
-    handler = CopyHandler(mw)
+def test_e2e_gui_copy_controller_with_real_service(tmp_path, e2e_server):
+    service = make_service(tmp_path, e2e_server)
+    controller = CopyController(service)
     png = make_png(tmp_path)
 
-    ok, content = handler.process_files([str(png)], "识别", "")
+    ok, content = controller.run([str(png)], "识别", "")
     assert ok is True
     assert content == "识别结果-1"
-    assert mw.displayed == ["识别结果-1"]
     assert e2e_server.wait_requests(1)

@@ -109,6 +109,11 @@ class RunStep:
         self.progress.set(value)
         self.status.configure(text=f"{phase} {current}/{total} ({percent:.0f}%)")
 
+    def set_status(self, text: str) -> None:
+        """直接设置状态栏短消息（错误/完成提示）。"""
+        if self.status is not None:
+            self.status.configure(text=text or "")
+
     def set_result(self, text: str) -> None:
         self.result.delete("1.0", "end")
         self.result.insert("1.0", (text or "")[:MAX_RESULT_CHARS])
