@@ -20,7 +20,7 @@ class AppContext:
         self.examples = ExampleLibrary(example_path)
         self.logger = StructuredLogger(log_file_path=log_path)
         self.clipboard = ClipboardHistory(root=root)
-        self.state = SessionState()
+        self.session_state = SessionState()
         self.service: ProcessingService | None = None
         self.rebuild_service()
 

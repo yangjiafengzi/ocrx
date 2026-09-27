@@ -48,12 +48,12 @@ def test_app_context_config_and_state_defaults(tmp_path):
 
     assert ctx.config.config["MAX_WORKERS"] == "10"
     assert ctx.config.config["PDF_SCALE_FACTOR"] == "3.0"
-    assert isinstance(ctx.state, SessionState)
-    assert ctx.state.file_paths == []
-    assert ctx.state.page_range == ""
-    assert ctx.state.selected_example_ids == []
-    assert ctx.state.prompt_text == ""
-    assert ctx.state.last_result == ""
+    assert isinstance(ctx.session_state, SessionState)
+    assert ctx.session_state.file_paths == []
+    assert ctx.session_state.page_range == ""
+    assert ctx.session_state.selected_example_ids == []
+    assert ctx.session_state.prompt_text == ""
+    assert ctx.session_state.last_result == ""
 
 
 def test_app_context_rebuild_service_uses_config(tmp_path):
